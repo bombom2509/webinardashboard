@@ -79,7 +79,8 @@ if df is not None:
         'Nursing Facility,Mental Health Treatment,Substance Use Treatment,QIN-QIO',
         'Nursing Facility,QIN-QIO',
         'Nursing Facility,QIN-QIO,Mental Health Treatment',
-        'Nursing Facility,QIN-QIO,Other'
+        'Nursing Facility,QIN-QIO,Other',
+        'Other, Nursing Facility'
     ]
     
     attended_values = [
@@ -102,25 +103,27 @@ if df is not None:
 
     attendees = attendee_filtered_df['Registration Time'].count()
     
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # --- THIS IS THE CORRECTED ATTENDEE LOGIC ---
+
+    # Nursing Facility Attendees: Count all ATTENDANCE INSTANCES from nursing facilities.
     nursing_facility_attendees = attendee_filtered_df[
         attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
-    ]['Email'].nunique()
+    ].shape[0]
 
+    # Non-Nursing Facility Attendees: Count all ATTENDANCE INSTANCES from other facilities.
     non_nursing_facility_attendees = attendee_filtered_df[
         ~attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
-    ]['Email'].nunique()
+    ].shape[0]
+
+    # --- END OF CORRECTED SECTION ---
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     total_engagement_hours = attendee_filtered_df['Time in Session (minutes)'].sum() / 60
-
     total_orgs = df['Organization'].nunique()
     nursing_facility_orgs = df[df['Workforce'].isin(nursing_facilities_workforce)]['Organization'].nunique()
     non_nursing_facility_orgs = total_orgs - nursing_facility_orgs
-
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    # --- THIS IS THE NEW DURATION CALCULATION ---
     total_webinar_duration = df.groupby('Webinar ID')['Actual Duration (minutes)'].unique().apply(sum).sum() / 60
-    # --- END OF NEW CALCULATION ---
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -136,8 +139,7 @@ if df is not None:
         st.metric(label="Non-Nursing Facility Attendees", value=f"{non_nursing_facility_attendees:,}")
         st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
 
-    # The metric label has been updated to reflect the new calculation
-    st.metric(label="Total Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
+    st.metric(label="Total Unique Session Duration (Minutes)", value=f"{total_webinar_duration:,.2f}")
     st.markdown("---")
 
     # --- (ALL CHARTING CODE BELOW IS UNCHANGED) ---
