@@ -82,16 +82,46 @@ if df is not None:
         'Nursing Facility,QIN-QIO,Other'
     ]
     
-    registrants = df['Email'].nunique()
-    attendees = df[df['Attended'] == 'Yes']['Email'].nunique()
-    nursing_facility_attendees = df[(df['Attended'] == 'Yes') & (df['Workforce'].isin(nursing_facilities_workforce))]['Email'].nunique()
-    non_nursing_facility_attendees = attendees - nursing_facility_attendees
+    attended_values = [
+        'Attended in Group Setting -Did not pre-register',
+        'Attended/Did Not Pre-Register',
+        'Did Not Register',
+        'Did not pre-register',
+        'Registered to attend; watched session with a group',
+        'Yes',
+        'Yes - Watched with Colleague',
+        'Yes -Entered name in Zoom Chat'
+    ]
+
+    registrants = df[df['attendee type'] == 'ATTENDEE']['Registration Time'].count()
+    
+    attendee_filtered_df = df[
+        (df['attendee type'] == 'ATTENDEE') & 
+        (df['Attended'].isin(attended_values))
+    ]
+
+    attendees = attendee_filtered_df['Registration Time'].count()
+    
+    nursing_facility_attendees = attendee_filtered_df[
+        attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
+    ]['Email'].nunique()
+
+    non_nursing_facility_attendees = attendee_filtered_df[
+        ~attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
+    ]['Email'].nunique()
+
+    total_engagement_hours = attendee_filtered_df['Time in Session (minutes)'].sum() / 60
+
     total_orgs = df['Organization'].nunique()
     nursing_facility_orgs = df[df['Workforce'].isin(nursing_facilities_workforce)]['Organization'].nunique()
     non_nursing_facility_orgs = total_orgs - nursing_facility_orgs
-    avg_duration = df['Actual Duration (minutes)'].mean()
-    total_engagement_hours = df[df['Attended'] == 'Yes']['Time in Session (minutes)'].sum() / 60
 
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # --- THIS IS THE NEW DURATION CALCULATION ---
+    total_webinar_duration = df.groupby('Webinar ID')['Actual Duration (minutes)'].unique().apply(sum).sum() / 60
+    # --- END OF NEW CALCULATION ---
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric(label="Total Registrants", value=f"{registrants:,}")
@@ -106,13 +136,14 @@ if df is not None:
         st.metric(label="Non-Nursing Facility Attendees", value=f"{non_nursing_facility_attendees:,}")
         st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
 
-    st.metric(label="Average Webinar Duration (Minutes)", value=f"{avg_duration:,.2f}")
+    # The metric label has been updated to reflect the new calculation
+    st.metric(label="Total Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
     st.markdown("---")
 
-    # --- Prepare Data for Charts ---
-    df['YearMonth'] = pd.to_datetime(df['Actual Start Time']).dt.to_period('M').astype(str)
+    # --- (ALL CHARTING CODE BELOW IS UNCHANGED) ---
 
-    # --- Monthly Analysis ---
+    df['YearMonth'] = pd.to_datetime(df['Actual Start Time']).dt.to_period('M').astype(str)
+    
     st.header("Monthly Analysis")
     monthly_data = df.groupby('YearMonth').agg(Total_Registrants=('Email', 'nunique'), Total_Attendees=('Attended', lambda x: (x == 'Yes').sum())).reset_index()
     col1, col2 = st.columns(2)
@@ -126,7 +157,6 @@ if df is not None:
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
 
-    # --- Region-wise Analysis ---
     st.header("Region-wise Monthly Analysis")
     region_monthly = df.groupby(['YearMonth', 'Region']).agg(Registrations=('Email', 'nunique'), Attendance=('Attended', lambda x: (x == 'Yes').sum())).reset_index()
     fig = px.bar(region_monthly, x='YearMonth', y='Registrations', color='Region', title='Monthly Region-wise Registration', barmode='group')
@@ -134,8 +164,7 @@ if df is not None:
     fig = px.bar(region_monthly, x='YearMonth', y='Attendance', color='Region', title='Monthly Region-wise Attendance', barmode='group')
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
-
-    # --- Simplified Workforce Analysis ---
+    
     st.header("Nursing vs. Non-Nursing Monthly Analysis")
     df['Facility_Type'] = df['Workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_facilities_workforce else 'Non-Nursing Facility')
     workforce_monthly = df.groupby(['YearMonth', 'Facility_Type']).agg(Registrations=('Email', 'nunique'), Attendance=('Attended', lambda x: (x == 'Yes').sum())).reset_index()
@@ -146,47 +175,29 @@ if df is not None:
     with col2:
         fig = px.bar(workforce_monthly[workforce_monthly['Facility_Type'] == 'Nursing Facility'], x='YearMonth', y='Attendance', title='Monthly Nursing Facilities Attendance')
         st.plotly_chart(fig, use_container_width=True)
-    # ... (rest of the simplified workforce charts are similar)
     st.markdown("---")
 
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    # --- THIS IS THE FINAL, INTERACTIVE SECTION ---
     st.header("Detailed Monthly Workforce Breakdown")
-
-    # 1. Create the grouped column for cleaner categories
     df['Workforce_Grouped'] = df['Workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_facilities_workforce else x)
-
-    # 2. Get a sorted list of all unique workforce groups for the filter
     all_workforce_groups = sorted(df['Workforce_Grouped'].unique())
-
-    # 3. CREATE THE INTERACTIVE MULTI-SELECT WIDGET!
     selected_workforces = st.multiselect(
         'Select Workforce Categories to Display:',
         options=all_workforce_groups,
-        default=all_workforce_groups  # By default, all categories are selected
+        default=all_workforce_groups
     )
-
-    # 4. Filter the main DataFrame based on the user's selection
     filtered_df = df[df['Workforce_Grouped'].isin(selected_workforces)]
-
-    # 5. Group the *filtered* data to prepare for the chart
     workforce_detail_monthly = filtered_df.groupby(['YearMonth', 'Workforce_Grouped']).agg(
         Registrations=('Email', 'nunique'),
         Attendance=('Attended', lambda x: (x == 'Yes').sum())
     ).reset_index()
-
-    # 6. Create the charts using the filtered and grouped data
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='YearMonth', y='Registrations', color='Workforce_Grouped',
                  title='Monthly Workforce Registration Distribution', barmode='stack')
     st.plotly_chart(fig_reg, use_container_width=True)
-
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='YearMonth', y='Attendance', color='Workforce_Grouped',
                  title='Monthly Workforce Attendance Distribution', barmode='stack')
     st.plotly_chart(fig_att, use_container_width=True)
-    # --- END OF INTERACTIVE SECTION ---
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
