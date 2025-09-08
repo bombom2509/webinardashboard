@@ -28,7 +28,7 @@ def load_data(file_path):
 
 
 # --- AREA TO PUT YOUR FILE PATH ---
-file_location = "WEBINARMASTER - Copy.xlsx"
+file_location = "multi_consolidated_report3.xlsx"
 df = load_data(file_location)
 # ------------------------------------
 
@@ -66,8 +66,6 @@ if df is not None:
         'Mental Health Treatment, Nursing Facility, Substance Use Treatment',
         'Mental Health Treatment, Substance Use Treatment, Nursing Facility',
         'Nursing Facility',
-        'Nursing Facility - DOH',
-        'Nursing Facility - Morning Breeze',
         'Nursing Facility Corporation',
         'Nursing Facility, Mental Health Treatment',
         'Nursing Facility, Mental Health Treatment, Other',
@@ -80,44 +78,28 @@ if df is not None:
         'Nursing Facility,QIN-QIO',
         'Nursing Facility,QIN-QIO,Mental Health Treatment',
         'Nursing Facility,QIN-QIO,Other',
-        'Other, Nursing Facility'
+        'Other, Nursing Facility',
+        'QIN-QIO,Mental Health Treatment,Nursing Facility,Substance Use Treatment',
+        'QIN-QIO,Substance Use Treatment,Mental Health Treatment,Nursing Facility',
+        'Substance Use Treatment, Nursing Facility'
     ]
     
-    attended_values = [
-        'Attended in Group Setting -Did not pre-register',
-        'Attended/Did Not Pre-Register',
-        'Did Not Register',
-        'Did not pre-register',
-        'Registered to attend; watched session with a group',
-        'Yes',
-        'Yes - Watched with Colleague',
-        'Yes -Entered name in Zoom Chat'
-    ]
-
     registrants = df[df['attendee type'] == 'ATTENDEE']['Registration Time'].count()
     
     attendee_filtered_df = df[
         (df['attendee type'] == 'ATTENDEE') & 
-        (df['Attended'].isin(attended_values))
+        (df['Attended'] == 'Yes')
     ]
 
-    attendees = attendee_filtered_df['Registration Time'].count()
+    attendees = attendee_filtered_df.shape[0]
     
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    # --- THIS IS THE CORRECTED ATTENDEE LOGIC ---
-
-    # Nursing Facility Attendees: Count all ATTENDANCE INSTANCES from nursing facilities.
     nursing_facility_attendees = attendee_filtered_df[
         attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
     ].shape[0]
 
-    # Non-Nursing Facility Attendees: Count all ATTENDANCE INSTANCES from other facilities.
     non_nursing_facility_attendees = attendee_filtered_df[
         ~attendee_filtered_df['Workforce'].isin(nursing_facilities_workforce)
     ].shape[0]
-
-    # --- END OF CORRECTED SECTION ---
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     total_engagement_hours = attendee_filtered_df['Time in Session (minutes)'].sum() / 60
     total_orgs = df['Organization'].nunique()
@@ -142,9 +124,24 @@ if df is not None:
     st.metric(label="Total Unique Session Duration (Minutes)", value=f"{total_webinar_duration:,.2f}")
     st.markdown("---")
 
-    # --- (ALL CHARTING CODE BELOW IS UNCHANGED) ---
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # --- THIS SECTION HAS BEEN UPDATED TO FIX THE DATE ERROR ---
+    # It now uses your 'Year' and 'Month' columns. 
+    # Please ensure your column names in the Excel file match exactly.
+    try:
+        # Ensure both columns are treated as strings
+        df['Year'] = df['Year'].astype(str)
+        df['Month'] = df['Month'].astype(str)
 
-    df['YearMonth'] = pd.to_datetime(df['Actual Start Time']).dt.to_period('M').astype(str)
+        # Combine them into a single string that pandas can easily read (e.g., "2023-Jun")
+        date_series = df['Year'] + '-' + df['Month']
+
+        # Convert the combined string to a datetime period and then back to a string
+        df['YearMonth'] = pd.to_datetime(date_series, format='mixed').dt.to_period('M').astype(str)
+    except KeyError:
+        st.error("Error: Could not find 'Year' and 'Month' columns. Please check your Excel file.")
+        st.stop() # Stop the script if the columns aren't found
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     st.header("Monthly Analysis")
     monthly_data = df.groupby('YearMonth').agg(Total_Registrants=('Email', 'nunique'), Total_Attendees=('Attended', lambda x: (x == 'Yes').sum())).reset_index()
@@ -194,11 +191,11 @@ if df is not None:
     ).reset_index()
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='YearMonth', y='Registrations', color='Workforce_Grouped',
-                 title='Monthly Workforce Registration Distribution', barmode='stack')
+                         title='Monthly Workforce Registration Distribution', barmode='stack')
     st.plotly_chart(fig_reg, use_container_width=True)
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='YearMonth', y='Attendance', color='Workforce_Grouped',
-                 title='Monthly Workforce Attendance Distribution', barmode='stack')
+                         title='Monthly Workforce Attendance Distribution', barmode='stack')
     st.plotly_chart(fig_att, use_container_width=True)
 
 else:
