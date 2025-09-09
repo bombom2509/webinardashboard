@@ -24,17 +24,17 @@ def load_data(file_path):
             df['Workforce'] = df['Workforce'].astype(str)
         return df
     except FileNotFoundError:
-        st.error(f"Error: The file '{file_path}' was not found. Please make sure the path is correct.")
+        st.error(f"Error: The file '{file_path}' was not found. Please make sure it's in your GitHub repository.")
         return None
     except Exception as e:
         st.error(f"An error occurred while loading the file: {e}")
         return None
 
 
-# --- Point to your new CSV file ---
-file_location = r"D:\ALIANT DATA\multi_consolidated_report3.csv"
+# --- FIX: Use a relative path that works on any computer or server ---
+file_location = "multi_consolidated_report3.csv"
 df = load_data(file_location)
-# ------------------------------------
+# ----------------------------------------------------------------------
 
 
 if df is not None:
@@ -59,7 +59,7 @@ if df is not None:
     """, unsafe_allow_html=True)
 
     # --- Dashboard Title ---
-    st.title('Webinar Performance Dashboard')
+    st.title('📊 Webinar Performance Dashboard')
     st.markdown("---")
 
     # --- Metrics Cards ---
@@ -88,7 +88,6 @@ if df is not None:
         'Substance Use Treatment, Nursing Facility'
     ]
     
-    # --- THIS IS THE ONLY LINE THAT HAS BEEN MODIFIED ---
     # For each unique webinar session (defined by ID and start time),
     # get its registration count and sum them all up for a grand total.
     registrants = df.drop_duplicates(subset=['Webinar ID', 'Actual Start Time'])['Registered'].sum()
