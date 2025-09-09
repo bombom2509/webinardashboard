@@ -8,14 +8,18 @@ st.set_page_config(layout="wide")
 # Function to load and cache data for performance
 @st.cache_data
 def load_data(file_path):
-    """Loads and preprocesses the webinar data from an Excel file."""
+    """Loads and preprocesses the webinar data from a CSV file."""
     try:
-        df = pd.read_excel(file_path)
+        # Reading from a clean CSV file
+        df = pd.read_csv(file_path)
+        
+        df.columns = df.columns.str.strip()
+
         numeric_cols = ['Actual Duration (minutes)', 'Time in Session (minutes)']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         df[numeric_cols] = df[numeric_cols].fillna(0)
-        # Convert Workforce column to string to avoid errors with mixed types
+        
         if 'Workforce' in df.columns:
             df['Workforce'] = df['Workforce'].astype(str)
         return df
@@ -27,8 +31,8 @@ def load_data(file_path):
         return None
 
 
-# --- AREA TO PUT YOUR FILE PATH ---
-file_location = "multi_consolidated_report3.xlsx"
+# --- Point to your new CSV file ---
+file_location = r"D:\ALIANT DATA\multi_consolidated_report3.csv"
 df = load_data(file_location)
 # ------------------------------------
 
@@ -84,13 +88,15 @@ if df is not None:
         'Substance Use Treatment, Nursing Facility'
     ]
     
-    registrants = df[df['attendee type'] == 'ATTENDEE']['Registration Time'].count()
+    # --- THIS IS THE ONLY LINE THAT HAS BEEN MODIFIED ---
+    # For each unique webinar session (defined by ID and start time),
+    # get its registration count and sum them all up for a grand total.
+    registrants = df.drop_duplicates(subset=['Webinar ID', 'Actual Start Time'])['Registered'].sum()
     
     attendee_filtered_df = df[
         (df['attendee type'] == 'ATTENDEE') & 
         (df['Attended'] == 'Yes')
     ]
-
     attendees = attendee_filtered_df.shape[0]
     
     nursing_facility_attendees = attendee_filtered_df[
@@ -124,24 +130,15 @@ if df is not None:
     st.metric(label="Total Unique Session Duration (Minutes)", value=f"{total_webinar_duration:,.2f}")
     st.markdown("---")
 
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    # --- THIS SECTION HAS BEEN UPDATED TO FIX THE DATE ERROR ---
-    # It now uses your 'Year' and 'Month' columns. 
-    # Please ensure your column names in the Excel file match exactly.
+    # Date preparation for monthly analysis
     try:
-        # Ensure both columns are treated as strings
         df['Year'] = df['Year'].astype(str)
         df['Month'] = df['Month'].astype(str)
-
-        # Combine them into a single string that pandas can easily read (e.g., "2023-Jun")
         date_series = df['Year'] + '-' + df['Month']
-
-        # Convert the combined string to a datetime period and then back to a string
         df['YearMonth'] = pd.to_datetime(date_series, format='mixed').dt.to_period('M').astype(str)
     except KeyError:
         st.error("Error: Could not find 'Year' and 'Month' columns. Please check your Excel file.")
-        st.stop() # Stop the script if the columns aren't found
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        st.stop()
     
     st.header("Monthly Analysis")
     monthly_data = df.groupby('YearMonth').agg(Total_Registrants=('Email', 'nunique'), Total_Attendees=('Attended', lambda x: (x == 'Yes').sum())).reset_index()
@@ -178,7 +175,7 @@ if df is not None:
 
     st.header("Detailed Monthly Workforce Breakdown")
     df['Workforce_Grouped'] = df['Workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_facilities_workforce else x)
-    all_workforce_groups = sorted(df['Workforce_Grouped'].unique())
+    all_workforce_groups = sorted(df['Workforce_Grouped'].dropna().unique())
     selected_workforces = st.multiselect(
         'Select Workforce Categories to Display:',
         options=all_workforce_groups,
@@ -191,12 +188,99 @@ if df is not None:
     ).reset_index()
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='YearMonth', y='Registrations', color='Workforce_Grouped',
-                         title='Monthly Workforce Registration Distribution', barmode='stack')
+                     title='Monthly Workforce Registration Distribution', barmode='stack')
     st.plotly_chart(fig_reg, use_container_width=True)
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='YearMonth', y='Attendance', color='Workforce_Grouped',
-                         title='Monthly Workforce Attendance Distribution', barmode='stack')
+                     title='Monthly Workforce Attendance Distribution', barmode='stack')
     st.plotly_chart(fig_att, use_container_width=True)
+    st.markdown("---")
+
+    st.header("Overall Performance by Region")
+    
+    if 'Region' in df.columns and 'Attended' in df.columns:
+        # Group by Region and calculate total registrations and attendees
+        regional_performance = df.groupby('Region').agg(
+            Registrations=('Attended', 'count'),
+            Attendees=('Attended', lambda x: (x == 'Yes').sum())
+        ).reset_index()
+        
+        # Shorten region names for cleaner chart labels
+        regional_performance['Region'] = regional_performance['Region'].str.split('-').str[0].str.strip()
+        
+        # Melt the DataFrame to prepare for a grouped bar chart
+        regional_performance_melted = regional_performance.melt(
+            id_vars='Region', 
+            value_vars=['Registrations', 'Attendees'],
+            var_name='Metric', 
+            value_name='Count'
+        )
+
+        # Create the grouped bar chart
+        fig = px.bar(
+            regional_performance_melted,
+            x='Region',
+            y='Count',
+            color='Metric',
+            barmode='group',
+            title='Total Registrations vs. Attendees by Region'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.error("One or more required columns ('Region', 'Attended') not found for the regional performance chart.")
+    
+    st.markdown("---")
+
+    st.header("Registrations vs. Attendance Comparison by Region")
+
+    # Check for the columns needed for this new logic
+    if 'Region' in df.columns and 'attendee type' in df.columns and 'YearMonth' in df.columns and 'Attended' in df.columns:
+        
+        region_list = sorted(df['Region'].dropna().unique())
+
+        selected_region_comp = st.selectbox(
+            'Select a Region for Comparison:',
+            options=region_list,
+            key='region_comparison_selectbox'
+        )
+        
+        # Filter data by selected region and attendee type
+        comp_df = df[
+            (df['Region'] == selected_region_comp) &
+            (df['attendee type'] == 'ATTENDEE')
+        ].copy()
+
+        if not comp_df.empty:
+            # Group by the existing 'YearMonth' column
+            monthly_comp = comp_df.groupby('YearMonth').agg(
+                Registrations=('Attended', 'count'),
+                Attendees=('Attended', lambda x: (x == 'Yes').sum())
+            ).reset_index()
+            
+            # Melt the DataFrame to prepare for grouped bar chart
+            monthly_comp_melted = monthly_comp.melt(
+                id_vars='YearMonth', 
+                value_vars=['Registrations', 'Attendees'],
+                var_name='Metric', 
+                value_name='Count'
+            )
+
+            fig = px.bar(
+                monthly_comp_melted,
+                x='YearMonth',
+                y='Count',
+                color='Metric',
+                barmode='group',
+                title=f'Monthly Registrations vs. Attendees for {selected_region_comp}',
+                labels={'YearMonth': 'Month'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning(f"No 'ATTENDEE' data found for '{selected_region_comp}'.")
+            
+    else:
+        st.error("One or more required columns ('Region', 'attendee type', 'YearMonth', 'Attended') not found for the regional comparison.")
+
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
