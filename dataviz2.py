@@ -189,12 +189,11 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
         ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
         
-        # FIX: Adjust font sizes for better readability
-        ax.set_ylabel('Count', fontsize=5)
+        ax.set_ylabel('Count', fontsize=7)
         ax.set_title(f'Monthly - {region}', fontsize=10)
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=90, ha="right", fontsize=3) # Reduced from 7
-        ax.tick_params(axis='y', labelsize=7) # Reduce y-axis label size
+        ax.set_xticklabels(labels, rotation=90, ha="right", fontsize=3)
+        ax.tick_params(axis='y', labelsize=7)
         ax.legend(fontsize=7)
         ax.grid(True, linestyle='--', alpha=0.6)
         fig.tight_layout(pad=0.5)
@@ -230,7 +229,28 @@ if df is not None:
         anchor = header.lower().replace(' ', '-').replace('.', '')
         st.sidebar.markdown(f'<a href="#{anchor}" class="nav-button" data-target="{anchor}">{header}</a>', unsafe_allow_html=True)
     
-    st.markdown(f"""<style>.main{{background-color:#f5f5ff}}h1,h2{{color:{LOGO_COLORS['primary_blue']};scroll-margin-top:80px}}a.nav-button{{display:block;padding:12px 15px;margin-bottom:8px;background-color:#fff;color:#333;text-align:left;text-decoration:none !important;border-radius:10px;border:1px solid #e0e0e0;box-shadow:0 2px 4px rgba(0,0,0,.05);transition:all .3s ease-in-out;font-weight:500}}a.nav-button:hover{{background-color:{LOGO_COLORS['accent_green']};color:#fff;box-shadow:0 4px 8px rgba(0,0,0,.15);transform:translateY(-2px)}}a.nav-button.active{{background-color:{LOGO_COLORS['primary_blue']} !important;color:#fff !important;box-shadow:0 4px 12px rgba(0,114,206,.4);border-color:{LOGO_COLORS['primary_blue']};font-weight:600}}a.nav-button.active:hover{{background-color:#005a9e !important;transform:translateY(-1px)}}.stMetric{{background-color:#fff;border:1px solid #e0e0e0;border-left:5px solid {LOGO_COLORS['primary_blue']};border-radius:10px;padding:15px;box-shadow:0 4px 8px rgba(0,0,0,.1)}}.stMetric>div>div:first-child{{color:{LOGO_COLORS['primary_blue']}}}.stPlotlyChart{{border-radius:10px;box-shadow:0 4px 8px rgba(0,0,0,.1)}}h2[id]{{position:relative}}</style>""", unsafe_allow_html=True)
+    # --- UPDATED CSS BLOCK ---
+    st.markdown(f"""
+    <style>
+        .main {{ background-color: #f5f5ff; }}
+        h1, h2 {{ color: {LOGO_COLORS['primary_blue']}; scroll-margin-top: 80px; }}
+        a.nav-button {{ display: block; padding: 12px 15px; margin-bottom: 8px; background-color: #fff; color: #333; text-align: left; text-decoration: none !important; border-radius: 10px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,.05); transition: all .3s ease-in-out; font-weight: 500; }}
+        a.nav-button:hover {{ background-color: {LOGO_COLORS['accent_green']}; color: #fff; box-shadow: 0 4px 8px rgba(0,0,0,.15); transform: translateY(-2px); }}
+        a.nav-button.active {{ background-color: {LOGO_COLORS['primary_blue']} !important; color: #fff !important; box-shadow: 0 4px 12px rgba(0,114,206,.4); border-color: {LOGO_COLORS['primary_blue']}; font-weight: 600; }}
+        a.nav-button.active:hover {{ background-color: #005a9e !important; transform: translateY(-1px); }}
+        .stMetric {{ background-color: #fff; border: 1px solid #e0e0e0; border-left: 5px solid {LOGO_COLORS['primary_blue']}; border-radius: 10px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
+        .stPlotlyChart {{ border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
+        h2[id] {{ position: relative; }}
+
+        /* FIX FOR MOBILE DARK MODE: Force dark text color on KPI cards */
+        .stMetric [data-testid="stMetricLabel"] {{
+            color: {LOGO_COLORS['primary_blue']};
+        }}
+        .stMetric [data-testid="stMetricValue"] {{
+            color: #31333F; /* A dark color for the metric value */
+        }}
+    </style>
+    """, unsafe_allow_html=True)
 
     # --- Header with Title and Download Button ---
     col1, col2 = st.columns([3, 1])
