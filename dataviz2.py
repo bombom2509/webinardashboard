@@ -5,6 +5,7 @@ import io
 from fpdf import FPDF
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.patches as mpatches
 
 # --- Page and App Configuration ---
 st.set_page_config(layout="wide")
@@ -28,6 +29,9 @@ def load_data(file_path):
         df[numeric_cols] = df[numeric_cols].fillna(0)
         if 'workforce' in df.columns:
             df['workforce'] = df['workforce'].astype(str)
+        # Shorten region names globally for consistency
+        if 'region' in df.columns:
+            df['region'] = df['region'].str.split('-').str[0].str.strip()
         return df
     except FileNotFoundError:
         st.error(f"Error: The file '{file_path}' was not found.")
@@ -45,13 +49,16 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     """
     pdf = FPDF(orientation='L')
     page_width = pdf.w
+    page_height = pdf.h
 
     # --- Helper function to save Matplotlib figures to the PDF ---
-    def save_mpl_fig_to_pdf(fig, pdf_obj):
+    def save_mpl_fig_to_pdf(fig, pdf_obj, x=10, y=30, w=None):
+        if w is None:
+            w = page_width - 20
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
         buf.seek(0)
-        pdf_obj.image(buf, x=10, y=30, w=page_width - 20)
+        pdf_obj.image(buf, x=x, y=y, w=w)
         plt.close(fig)
 
     # --- Data Preparation ---
@@ -90,7 +97,6 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     # --- 4. Overall Performance by Region Chart ---
     pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "Overall Performance by Region", ln=True)
     regional_performance = df.groupby('region').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
-    regional_performance['region'] = regional_performance['region'].str.split('-').str[0].str.strip()
     sorted_regions = sorted(regional_performance['region'].unique(), key=lambda r: int(r.replace('Region ', '')))
     labels = sorted_regions
     registrations = [regional_performance[regional_performance['region'] == r]['registrations'].sum() for r in labels]
@@ -102,39 +108,105 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     ax.set_ylabel('Count'); ax.set_title('Total Registrations vs. Attendees by Region'); ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.6); fig.tight_layout()
     save_mpl_fig_to_pdf(fig, pdf)
 
-    # --- 5. Region-wise Doughnut Charts ---
-    pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "Region-wise Nursing vs Non Nursing Attendance", ln=True); pdf.ln(5)
-    region_list_doughnut = sorted(df['region'].dropna().unique())
-    x_pos, y_pos, chart_idx = [10, page_width / 2 + 5], 25, 0
-    workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
-    for region in region_list_doughnut:
-        if chart_idx > 0 and chart_idx % 2 == 0:
-            pdf.add_page(orientation='L'); y_pos = 25
-        df_region = df[(df['region'] == region) & (df['attended'] == 'Yes')]
-        if not df_region.empty:
-            breakdown = df_region['facility_type'].value_counts()
-            fig, ax = plt.subplots(figsize=(6, 5))
-            ax.pie(breakdown, labels=breakdown.index, autopct='%1.1f%%', colors=[workforce_color_map.get(x, '#CCCCCC') for x in breakdown.index], startangle=90, wedgeprops=dict(width=0.4, edgecolor='w'))
-            ax.set_title(f'Attendance in {region}')
-            buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=120, bbox_inches='tight'); buf.seek(0)
-            pdf.image(buf, x=x_pos[chart_idx % 2], y=y_pos, w=(page_width / 2) - 20)
-            plt.close(fig); chart_idx += 1
+    # --- Helper for positioning charts in a grid ---
+    def plot_grid(pdf_obj, charts_data, plot_function, legend_info=None):
+        pdf_obj.add_page()
+        pdf_obj.set_font("Arial", 'B', 16)
+        pdf_obj.cell(0, 10, charts_data['title'], ln=True)
+        pdf_obj.ln(5)
 
-    # --- 6. Registrations vs. Attendance by Region Charts ---
-    pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "Registrations vs. Attendance Comparison by Region", ln=True)
-    region_list_comp = sorted(df['region'].dropna().unique())
-    for region in region_list_comp:
-        pdf.add_page()
+        sorted_regions = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
+
+        margin = 10
+        charts_per_row = 4
+        chart_dim_mm = 50
+        chart_dim_inches = chart_dim_mm / 25.4
+        
+        available_width = pdf_obj.w - (2 * margin)
+        spacing_x = (available_width - (charts_per_row * chart_dim_mm)) / (charts_per_row - 1) if charts_per_row > 1 else 0
+        spacing_y = 15
+        y_start = 25
+
+        for i, region in enumerate(sorted_regions):
+            row = i // charts_per_row
+            col = i % charts_per_row
+            x_pos = margin + col * (chart_dim_mm + spacing_x)
+            y_pos = y_start + row * (chart_dim_mm + spacing_y)
+            
+            fig = plot_function(region, chart_dim_inches, chart_dim_inches)
+            if fig:
+                save_mpl_fig_to_pdf(fig, pdf_obj, x=x_pos, y=y_pos, w=chart_dim_mm)
+        
+        if legend_info:
+            legend_fig, legend_ax = plt.subplots(figsize=(2, 0.5))
+            patches = [mpatches.Patch(color=c, label=l) for l, c in zip(legend_info['labels'], legend_info['colors'])]
+            legend_ax.legend(handles=patches, loc='center', ncol=len(legend_info['labels']), frameon=False, fontsize=9)
+            legend_ax.axis('off')
+            
+            legend_width_mm = 50
+            legend_height_mm = 10
+            legend_x = pdf_obj.w - margin - legend_width_mm
+            legend_y = pdf_obj.h - margin - legend_height_mm
+            
+            save_mpl_fig_to_pdf(legend_fig, pdf_obj, x=legend_x, y=legend_y, w=legend_width_mm)
+
+    # --- 5. Plotting function for Doughnut Charts ---
+    def create_doughnut_chart(region, fig_w, fig_h):
+        df_region = df[(df['region'] == region) & (df['attended'] == 'Yes')]
+        if df_region.empty:
+            return None
+        
+        breakdown = df_region['facility_type'].value_counts()
+        workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
+        
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.pie(breakdown, labels=None, autopct='%1.1f%%',
+               colors=[workforce_color_map.get(x, '#CCCCCC') for x in breakdown.index], 
+               startangle=90, wedgeprops=dict(width=0.4, edgecolor='w'), 
+               textprops={'fontsize': 8, 'color': 'black'})
+        ax.set_title(f'{region}', fontsize=10)
+        ax.set_aspect('equal')
+        return fig
+
+    # --- 6. Plotting function for Bar Charts ---
+    def create_bar_chart(region, fig_w, fig_h):
         comp_df = df[(df['region'] == region) & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
-        if not comp_df.empty:
-            monthly_comp = comp_df.groupby('yearmonth').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
-            labels = monthly_comp['yearmonth']; registrations = monthly_comp['registrations']; attendees = monthly_comp['attendees']
-            x = np.arange(len(labels)); width = 0.35
-            fig, ax = plt.subplots(figsize=(12, 6))
-            ax.bar(x - width/2, registrations, width, label='Registrations', color=LOGO_COLORS["primary_blue"])
-            ax.bar(x + width/2, attendees, width, label='Attendees', color=LOGO_COLORS["accent_green"])
-            ax.set_ylabel('Count'); ax.set_title(f'Monthly Registrations vs. Attendees for {region}'); ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.6); fig.tight_layout()
-            save_mpl_fig_to_pdf(fig, pdf)
+        if comp_df.empty:
+            return None
+
+        monthly_comp = comp_df.groupby('yearmonth').agg(
+            registrations=('attended', 'count'), 
+            attendees=('attended', lambda x: (x == 'Yes').sum())
+        ).reset_index()
+        
+        labels = monthly_comp['yearmonth']
+        registrations = monthly_comp['registrations']
+        attendees = monthly_comp['attendees']
+        x = np.arange(len(labels))
+        width = 0.35
+        
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
+        ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
+        
+        # FIX: Adjust font sizes for better readability
+        ax.set_ylabel('Count', fontsize=5)
+        ax.set_title(f'Monthly - {region}', fontsize=10)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=90, ha="right", fontsize=3) # Reduced from 7
+        ax.tick_params(axis='y', labelsize=7) # Reduce y-axis label size
+        ax.legend(fontsize=7)
+        ax.grid(True, linestyle='--', alpha=0.6)
+        fig.tight_layout(pad=0.5)
+        return fig
+
+    # --- Call grid plotters for sections 5 and 6 ---
+    workforce_legend_info = {
+        'labels': ['Nursing Facility', 'Non-Nursing Facility'],
+        'colors': [LOGO_COLORS["accent_green"], '#D9534F']
+    }
+    plot_grid(pdf, {'title': "Region-wise Nursing vs Non-Nursing Attendance"}, create_doughnut_chart, legend_info=workforce_legend_info)
+    plot_grid(pdf, {'title': "Registrations vs. Attendance Comparison by Region"}, create_bar_chart)
 
     return bytes(pdf.output())
 
@@ -192,7 +264,7 @@ if df is not None:
 
     st.markdown("---")
     
-    # --- KPIs and Dashboard Content (The full dashboard is now always visible) ---
+    # --- KPIs and Dashboard Content ---
     st.header('Key Performance Indicators')
     registrants = df.drop_duplicates(subset=['webinar id', 'actual start time'])['registrations'].sum()
     attendee_filtered_df = df[(df['attendee type'].str.title().isin(['Attendee', 'Guest'])) & (df['attended'] == 'Yes')]
@@ -256,11 +328,9 @@ if df is not None:
     st.header("Overall Performance by Region")
     if 'region' in df.columns:
         regional_performance = df.groupby('region').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
-        regional_performance['region'] = regional_performance['region'].str.split('-').str[0].str.strip()
         regional_performance_melted = regional_performance.melt(id_vars='region', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
-        unique_regions = regional_performance_melted['region'].unique()
-        sorted_regions = sorted(unique_regions, key=lambda r: int(r.replace('Region ', '')))
-        fig_region = px.bar(regional_performance_melted, x='region', y='count', color='metric', barmode='group', title='Total Registrations vs. Attendees by Region', color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]}, category_orders={'region': sorted_regions})
+        sorted_regions_plotly = sorted(regional_performance_melted['region'].unique(), key=lambda r: int(r.replace('Region ', '')))
+        fig_region = px.bar(regional_performance_melted, x='region', y='count', color='metric', barmode='group', title='Total Registrations vs. Attendees by Region', color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]}, category_orders={'region': sorted_regions_plotly})
         st.plotly_chart(fig_region, use_container_width=True)
     else:
         st.error("Column 'region' not found.")
@@ -268,7 +338,7 @@ if df is not None:
 
     st.header("Region-wise Nursing vs Non Nursing Attendance")
     if 'region' in df.columns:
-        region_list_for_doughnut = sorted(df['region'].dropna().unique())
+        region_list_for_doughnut = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
         selected_region_doughnut = st.selectbox('Select a Region to Display:', options=region_list_for_doughnut, key='region_doughnut_selectbox')
         region_doughnut_df = df[(df['region'] == selected_region_doughnut) & (df['attended'] == 'Yes')]
         if not region_doughnut_df.empty:
@@ -286,7 +356,7 @@ if df is not None:
 
     st.header("Registrations vs. Attendance Comparison by Region")
     if 'region' in df.columns and 'attendee type' in df.columns and 'yearmonth' in df.columns:
-        region_list_comp = sorted(df['region'].dropna().unique())
+        region_list_comp = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
         selected_region_comp = st.selectbox('Select a Region for Comparison:', options=region_list_comp, key='region_comparison_selectbox')
         comp_df = df[(df['region'] == selected_region_comp) & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
         if not comp_df.empty:
@@ -305,7 +375,6 @@ if df is not None:
     function initializeNavigation() {
         console.log('Initializing navigation...');
         
-        // Function to setup header IDs
         function setupHeaderIds() {
             const headers = parent.document.querySelectorAll('h2');
             headers.forEach(header => {
@@ -313,12 +382,10 @@ if df is not None:
                     const text = header.textContent || header.innerText;
                     const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
                     header.id = id;
-                    console.log('Created header ID:', id);
                 }
             });
         }
         
-        // Function to highlight active section
         function highlightActiveSection() {
             const headers = Array.from(parent.document.querySelectorAll('h2[id]'));
             const navButtons = Array.from(parent.document.querySelectorAll('.nav-button'));
@@ -342,8 +409,6 @@ if df is not None:
                 activeHeaderId = headers[0].id;
             }
             
-            console.log('Active section:', activeHeaderId);
-            
             navButtons.forEach(button => {
                 const targetId = button.getAttribute('data-target');
                 if (targetId === activeHeaderId) {
@@ -354,7 +419,6 @@ if df is not None:
             });
         }
         
-        // Function to setup smooth scrolling
         function setupSmoothScrolling() {
             const navButtons = parent.document.querySelectorAll('.nav-button');
             navButtons.forEach(button => {
@@ -379,12 +443,9 @@ if df is not None:
                     allNavButtons.forEach(btn => btn.classList.remove('active'));
                     this.classList.add('active');
                 }, 100);
-                
-                console.log('Scrolling to:', targetId);
             }
         }
         
-        // Debounce function
         function debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
@@ -397,23 +458,14 @@ if df is not None:
             };
         }
         
-        // Initialize everything
         setupHeaderIds();
         setupSmoothScrolling();
         highlightActiveSection();
         
-        // Add scroll listener
         const debouncedHighlight = debounce(highlightActiveSection, 100);
         parent.window.addEventListener('scroll', debouncedHighlight);
-        
-        console.log('Navigation initialized successfully');
     }
-    
-    // Run initialization with multiple attempts
-    setTimeout(initializeNavigation, 500);
-    setTimeout(initializeNavigation, 1500);
-    setTimeout(initializeNavigation, 3000);
-    
+
     if (parent.document.readyState === 'loading') {
         parent.document.addEventListener('DOMContentLoaded', initializeNavigation);
     } else {
