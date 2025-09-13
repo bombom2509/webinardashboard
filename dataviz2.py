@@ -77,9 +77,12 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     pdf.set_font("Arial", '', 14)
     pdf.cell(0, 10, f"Report Generated on: {report_date_str}", ln=True, align='C')
 
-    # --- 2. Monthly Analysis Chart ---
+    # --- 2. Monthly Analysis Chart (WITH UPDATED CALCULATION) ---
     pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "Monthly Analysis", ln=True)
-    monthly_data = df.groupby('yearmonth').agg(total_registrants=('email id', 'nunique'), total_attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
+    monthly_data = df.groupby('yearmonth').agg(
+        total_registrants=('attendee type', lambda ser: (ser.str.lower() == 'attendee').sum()),
+        total_attendees=('attended', lambda x: (x == 'Yes').sum())
+    ).reset_index()
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.plot(monthly_data['yearmonth'], monthly_data['total_registrants'], label='Total Registrants', color=LOGO_COLORS["primary_blue"], marker='o')
     ax.plot(monthly_data['yearmonth'], monthly_data['total_attendees'], label='Total Attendees', color=LOGO_COLORS["accent_green"], marker='o')
@@ -229,7 +232,6 @@ if df is not None:
         anchor = header.lower().replace(' ', '-').replace('.', '')
         st.sidebar.markdown(f'<a href="#{anchor}" class="nav-button" data-target="{anchor}">{header}</a>', unsafe_allow_html=True)
     
-    # --- UPDATED CSS BLOCK ---
     st.markdown(f"""
     <style>
         .main {{ background-color: #f5f5ff; }}
@@ -241,14 +243,8 @@ if df is not None:
         .stMetric {{ background-color: #fff; border: 1px solid #e0e0e0; border-left: 5px solid {LOGO_COLORS['primary_blue']}; border-radius: 10px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
         .stPlotlyChart {{ border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
         h2[id] {{ position: relative; }}
-
-        /* FIX FOR MOBILE DARK MODE: Force dark text color on KPI cards */
-        .stMetric [data-testid="stMetricLabel"] {{
-            color: {LOGO_COLORS['primary_blue']};
-        }}
-        .stMetric [data-testid="stMetricValue"] {{
-            color: #31333F; /* A dark color for the metric value */
-        }}
+        .stMetric [data-testid="stMetricLabel"] {{ color: {LOGO_COLORS['primary_blue']}; }}
+        .stMetric [data-testid="stMetricValue"] {{ color: #31333F; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -320,8 +316,13 @@ if df is not None:
     except KeyError:
         st.error("Error: Could not find 'year' and 'month' columns for dashboard charts."); st.stop()
 
+    # --- Monthly Analysis Section ---
     st.header("Monthly Analysis")
-    monthly_data = df.groupby('yearmonth').agg(total_registrants=('email id', 'nunique'), total_attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
+    monthly_data = df.groupby('yearmonth').agg(
+        total_registrants=('attendee type', lambda ser: (ser.str.lower() == 'attendee').sum()),
+        total_attendees=('attended', lambda x: (x == 'Yes').sum())
+    ).reset_index()
+
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
         fig_bar1 = px.bar(monthly_data, x='yearmonth', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
