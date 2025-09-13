@@ -3,6 +3,7 @@ pandas
 plotly
 fpdf2
 openpyxl
-kaleido==0.1.0.post1
+
+
 
 
