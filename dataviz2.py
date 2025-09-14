@@ -335,12 +335,25 @@ if df is not None:
     st.plotly_chart(fig_line, use_container_width=True)
     st.markdown("---")
 
+    # --- MODIFIED DETAILED MONTHLY WORKFORCE BREAKDOWN ---
     st.header("Detailed Monthly Workforce Breakdown")
-    workforce_detail_monthly = df.groupby(['yearmonth', 'facility_type']).agg(registrations=('email id', 'nunique'), attendance=('attended', lambda x: (x == 'Yes').sum())).reset_index()
+    
+    # Create a pre-filtered DataFrame for the attendance calculation
+    attendee_guest_df = df[df['attendee type'].str.title().isin(['Attendee', 'Guest'])]
+    
+    # Perform aggregations
+    registrations_by_workforce = df.groupby(['yearmonth', 'facility_type'])['attendee type'].apply(lambda ser: (ser.str.lower() == 'attendee').sum()).reset_index(name='registrations')
+    attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth', 'facility_type']).size().reset_index(name='attendance')
+
+    # Merge the two results together for charting
+    workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
+    
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
+    
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     st.plotly_chart(fig_reg, use_container_width=True)
+    
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='yearmonth', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     st.plotly_chart(fig_att, use_container_width=True)
