@@ -348,7 +348,7 @@ if df is not None:
     # Merge the two results together for charting
     workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
     
-   workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
+    workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
     
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
@@ -510,5 +510,6 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
 
 
