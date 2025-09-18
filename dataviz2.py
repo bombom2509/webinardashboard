@@ -160,7 +160,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
             return None
         
         breakdown = df_region['facility_type'].value_counts()
-        workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
+        workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
         
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
         ax.pie(breakdown, labels=None, autopct='%1.1f%%',
@@ -348,7 +348,7 @@ if df is not None:
     # Merge the two results together for charting
     workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
     
-    workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
+   workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
     
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
@@ -510,4 +510,5 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
 
