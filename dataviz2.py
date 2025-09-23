@@ -335,6 +335,13 @@ if df is not None:
         st.plotly_chart(fig_bar2, use_container_width=True)
     fig_line = px.line(monthly_data, x='yearmonth', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
     st.plotly_chart(fig_line, use_container_width=True)
+    
+    # --- NEW: Added horizontal table for Monthly Analysis ---
+    st.markdown("##### Monthly Summary Data")
+    monthly_summary_table = monthly_data.set_index('yearmonth').T
+    monthly_summary_table.rename(index={'total_registrants': 'Total Registrants', 'total_attendees': 'Total Attendees'}, inplace=True)
+    st.table(monthly_summary_table)
+
     st.markdown("---")
 
     # --- DETAILED MONTHLY WORKFORCE BREAKDOWN ---
@@ -344,16 +351,33 @@ if df is not None:
     attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth', 'facility_type']).size().reset_index(name='attendance')
     workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
+    
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
     fig_reg.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_reg, use_container_width=True)
+
+    # --- NEW: Added horizontal table for Workforce Registration ---
+    st.markdown("##### Registration Data by Workforce")
+    reg_table_data = workforce_detail_monthly.pivot(
+        index='facility_type', columns='yearmonth', values='registrations'
+    ).rename_axis(None, axis=1).rename_axis(None, axis=0)
+    st.table(reg_table_data)
+
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='yearmonth', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     fig_att.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
     fig_att.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_att, use_container_width=True)
+
+    # --- NEW: Added horizontal table for Workforce Attendance ---
+    st.markdown("##### Attendance Data by Workforce")
+    att_table_data = workforce_detail_monthly.pivot(
+        index='facility_type', columns='yearmonth', values='attendance'
+    ).rename_axis(None, axis=1).rename_axis(None, axis=0)
+    st.table(att_table_data)
+    
     st.markdown("---")
 
     # --- OVERALL PERFORMANCE BY REGION ---
@@ -366,6 +390,13 @@ if df is not None:
         fig_region.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
         fig_region.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_region, use_container_width=True)
+
+        # --- NEW: Added horizontal table for Regional Performance ---
+        st.markdown("##### Regional Performance Data")
+        sorted_regional_performance = regional_performance.set_index('region').loc[sorted_regions_plotly].reset_index()
+        regional_table = sorted_regional_performance.set_index('region').T
+        regional_table.rename(index={'registrations': 'Registrations', 'attendees': 'Attendees'}, inplace=True)
+        st.table(regional_table)
     else:
         st.error("Column 'region' not found.")
     st.markdown("---")
@@ -383,6 +414,11 @@ if df is not None:
             fig_doughnut.update_traces(textinfo='percent+label', pull=[0.05, 0])
             fig_doughnut.update_layout(legend_title_text='Facility Type')
             st.plotly_chart(fig_doughnut, use_container_width=True)
+
+            # --- NEW: Added horizontal table for Doughnut Chart Data ---
+            st.markdown("##### Attendance Breakdown Data")
+            doughnut_table = attendance_breakdown.set_index('facility_type').T.rename(index={'count': 'Attendees'})
+            st.table(doughnut_table)
         else:
             st.warning(f"No attendance data found for '{selected_region_doughnut}'.")
     else:
@@ -491,6 +527,12 @@ if df is not None:
             fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
             fig_comp.update_layout(margin=dict(t=80))
             st.plotly_chart(fig_comp, use_container_width=True)
+
+            # --- NEW: Added horizontal table for Regional Comparison ---
+            st.markdown(f"##### Monthly Data for {selected_region_comp}")
+            comp_table = monthly_comp.set_index('yearmonth').T
+            comp_table.rename(index={'registrations': 'Registrations', 'attendees': 'Attendees'}, inplace=True)
+            st.table(comp_table)
         else:
             st.warning(f"No 'Attendee' or 'Guest' data found for '{selected_region_comp}'.")
     else:
