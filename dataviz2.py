@@ -473,7 +473,7 @@ if df is not None:
         territory_counts = state_counts[state_counts['state'].isin(territories_list)]
         actual_state_counts = state_counts[~state_counts['state'].isin(territories_list)]
         if not territory_counts.empty:
-            st.markdown("##### Territory-Wise Attendee Count (Not shown on map)")
+            st.markdown("##### Territory-wise Attendee Count (Not shown on map)")
             territory_table = territory_counts.sort_values(by='state').set_index('state').T
             territory_table.rename(index={'attendees': 'Attendees'}, inplace=True)
             st.table(territory_table.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
@@ -609,3 +609,4 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
