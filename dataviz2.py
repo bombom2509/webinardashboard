@@ -648,13 +648,15 @@ if df is not None:
         
         # Display data table
         st.markdown("##### Monthly Organization Participation Data")
-        org_table = org_data.set_index('month_year').T
+        org_table = org_data.copy()
+        org_table['month_year'] = org_table['month_year'].dt.strftime('%Y-%m')
+        org_table = org_table.set_index('month_year').T
         org_table.rename(index={
             'nursing_facility_orgs': 'Nursing Facility Organizations',
             'non_nursing_facility_orgs': 'Non-Nursing Facility Organizations'
         }, inplace=True)
-        
-        # Format numbers in table for better display
+
+# Format numbers in table for better display
         org_table = org_table.astype(int)
         st.table(org_table)
         
