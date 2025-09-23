@@ -95,7 +95,6 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     workforce_detail_monthly.plot(kind='bar', stacked=True, ax=ax, color=[LOGO_COLORS["accent_green"], '#D9534F'])
     ax.set_title('Monthly Workforce Attendance Distribution'); ax.set_ylabel('Attendance Count'); ax.set_xlabel('Month'); ax.tick_params(axis='x', rotation=45); ax.legend(title='Facility Type'); ax.grid(True, linestyle='--', alpha=0.6);
     
-    # NEW: Add labels to stacked bars
     for c in ax.containers:
         labels = [f'{v.get_height():.0f}' if v.get_height() > 0 else '' for v in c]
         ax.bar_label(c, labels=labels, label_type='center', fontsize=8, color='white', weight='bold')
@@ -115,7 +114,6 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     rects1 = ax.bar(x - width/2, registrations, width, label='Registrations', color=LOGO_COLORS["primary_blue"])
     rects2 = ax.bar(x + width/2, attendees, width, label='Attendees', color=LOGO_COLORS["accent_green"])
     
-    # NEW: Add labels to grouped bars
     ax.bar_label(rects1, padding=3, fmt='%.0f')
     ax.bar_label(rects2, padding=3, fmt='%.0f')
 
@@ -190,7 +188,6 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         rects1 = ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
         rects2 = ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
         
-        # NEW: Add labels for small PDF charts
         ax.bar_label(rects1, padding=2, fmt='%.0f', fontsize=6)
         ax.bar_label(rects2, padding=2, fmt='%.0f', fontsize=6)
 
@@ -328,13 +325,13 @@ if df is not None:
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
         fig_bar1 = px.bar(monthly_data, x='yearmonth', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
-        fig_bar1.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-        fig_bar1.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+        fig_bar1.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
+        fig_bar1.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_bar1, use_container_width=True)
     with chart_col2:
         fig_bar2 = px.bar(monthly_data, x='yearmonth', y='total_attendees', title='Monthly Attendance Distribution', color_discrete_sequence=[LOGO_COLORS["accent_green"]])
-        fig_bar2.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-        fig_bar2.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+        fig_bar2.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
+        fig_bar2.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_bar2, use_container_width=True)
     fig_line = px.line(monthly_data, x='yearmonth', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
     st.plotly_chart(fig_line, use_container_width=True)
@@ -349,13 +346,13 @@ if df is not None:
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
-    fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside')
-    fig_reg.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+    fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
+    fig_reg.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_reg, use_container_width=True)
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='yearmonth', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
-    fig_att.update_traces(texttemplate='%{y:,.0f}', textposition='inside')
-    fig_att.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+    fig_att.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
+    fig_att.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_att, use_container_width=True)
     st.markdown("---")
 
@@ -366,8 +363,8 @@ if df is not None:
         regional_performance_melted = regional_performance.melt(id_vars='region', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
         sorted_regions_plotly = sorted(regional_performance_melted['region'].unique(), key=lambda r: int(r.replace('Region ', '')))
         fig_region = px.bar(regional_performance_melted, x='region', y='count', color='metric', barmode='group', title='Total Registrations vs. Attendees by Region', color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]}, category_orders={'region': sorted_regions_plotly})
-        fig_region.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-        fig_region.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+        fig_region.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
+        fig_region.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_region, use_container_width=True)
     else:
         st.error("Column 'region' not found.")
@@ -491,8 +488,8 @@ if df is not None:
             monthly_comp = comp_df.groupby('yearmonth').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
             monthly_comp_melted = monthly_comp.melt(id_vars='yearmonth', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
             fig_comp = px.bar(monthly_comp_melted, x='yearmonth', y='count', color='metric', barmode='group', title=f'Monthly Registrations vs. Attendees for {selected_region_comp}', labels={'yearmonth': 'Month'}, color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]})
-            fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
-            fig_comp.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
+            fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
+            fig_comp.update_layout(margin=dict(t=80))
             st.plotly_chart(fig_comp, use_container_width=True)
         else:
             st.warning(f"No 'Attendee' or 'Guest' data found for '{selected_region_comp}'.")
@@ -590,4 +587,3 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
-
