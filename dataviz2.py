@@ -246,6 +246,11 @@ if df is not None:
         h2[id] {{ position: relative; }}
         .stMetric [data-testid="stMetricLabel"] {{ color: {LOGO_COLORS['primary_blue']}; }}
         .stMetric [data-testid="stMetricValue"] {{ color: #31333F; }}
+
+        /* --- NEW RULE TO PREVENT TABLE CELL WRAPPING --- */
+        table th, table td {{
+            white-space: nowrap;
+        }}
     </style>
     """, unsafe_allow_html=True)
 
