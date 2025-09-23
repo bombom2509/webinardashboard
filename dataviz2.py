@@ -215,7 +215,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     return bytes(pdf.output())
 
 # --- Main App Logic ---
-file_location = r"D:\ALIANT_MICHELLE\EXPORT\MASTERDASH3.xlsx"
+file_location = "MASTERDASH3.xlsx"
 logo_path = "logo.jpeg"
 
 df = load_data(file_location)
@@ -590,3 +590,4 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
