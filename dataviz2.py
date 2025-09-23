@@ -302,8 +302,8 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     return bytes(pdf.output())
 
 # --- Main App Logic ---
-file_location = r"MASTERDASH5.xlsx"
-kpi_file_location = r"Alliant Total Org Data 2023-2025.xlsx"
+file_location = "MASTERDASH5.xlsx"
+kpi_file_location = "Alliant Total Org Data 2023-2025.xlsx"
 logo_path = "logo.jpeg"
 
 df = load_data(file_location)
@@ -407,7 +407,8 @@ if df is not None:
         df['yearmonth_display'] = datetime_series.dt.strftime('%b - %y')
         df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_list else 'Non-Nursing Facility')
     except KeyError:
-        st.error("Error: Could not find 'year' and 'month' columns for dashboard charts."); st.stop()
+        st.error("Error: Could not find 'year' and 'month' columns for dashboard charts.")
+        st.stop()
 
     # --- Monthly Analysis Section ---
     st.header("Monthly Analysis")
@@ -520,36 +521,79 @@ if df is not None:
     st.markdown("---")
 
     # --- ATTENDEE HEATMAP BY STATE SECTION ---
-    st.header("Attendee Heatmap by State")
+    st.header("Attendee Heatmap by Region")
+
     if 'state/province' in df.columns:
-        heatmap_df = df[(df['attended'] == 'Yes') & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
-        state_counts = heatmap_df['state/province'].value_counts().reset_index()
-        state_counts.columns = ['state', 'attendees']
-        fig_map = px.choropleth(state_counts, locations='state', locationmode="USA-states", color='attendees', scope="usa", title="Total Webinar Attendees by State", color_continuous_scale=["#FFFFFF", LOGO_COLORS["primary_blue"]], labels={'attendees': 'Attendees'}, hover_name='state')
+        # Filter only attended and relevant attendee types
+        heatmap_df = df[(df['attended'] == 'Yes') & (df['attendee type'].str.strip().str.title().isin(['Attendee', 'Guest']))].copy()
+        
+        # Map states/territories to regions
+        region_map = {
+            "Region 1": ["CT", "ME", "MA", "NH", "RI", "VT"],
+            "Region 2": ["NJ", "NY", "PR", "VI"],
+            "Region 3": ["DE", "DC", "MD", "PA", "VA", "WV"],
+            "Region 4": ["AL", "FL", "GA", "KY", "MS", "NC", "SC", "TN"],
+            "Region 5": ["IL", "IN", "MI", "MN", "OH", "WI"],
+            "Region 6": ["AR", "LA", "NM", "OK", "TX"],
+            "Region 7": ["IA", "KS", "MO", "NE"],
+            "Region 8": ["CO", "MT", "ND", "SD", "UT", "WY"],
+            "Region 9": ["AZ", "CA", "HI", "NV", "AS", "MP", "FM", "GU", "MH", "PW"],
+            "Region 10": ["AK", "ID", "OR", "WA"]
+        }
+
+        # Reverse mapping for quick lookup
+        state_to_region = {state: region for region, states in region_map.items() for state in states}
+
+        # Add a 'region' column
+        heatmap_df['region'] = heatmap_df['state/province'].map(state_to_region)
+
+        # Aggregate attendees by region
+        region_counts = heatmap_df.groupby('region')['region'].count().reset_index(name='attendees')
+
+        # Assign each state the total attendees of its region
+        heatmap_df['region_attendees'] = heatmap_df['region'].map(region_counts.set_index('region')['attendees'])
+
+        # Prepare dataframe for choropleth
+        region_state_counts = heatmap_df[['state/province', 'region', 'region_attendees']].drop_duplicates()
+        region_state_counts.rename(columns={'state/province': 'state', 'region_attendees': 'attendees'}, inplace=True)
+
+        # Plot choropleth
+        fig_map = px.choropleth(
+            region_state_counts,
+            locations='state',
+            locationmode="USA-states",
+            color='attendees',
+            scope="usa",
+            title="Webinar Attendees by Region",
+            color_continuous_scale=["#FFFFFF", LOGO_COLORS["primary_blue"]],
+            labels={'attendees': 'Attendees'},
+            hover_name='region'
+        )
         fig_map.update_traces(hovertemplate='<b>%{hovertext}</b><br>Attendees: %{z}<extra></extra>')
-        fig_map.add_scattergeo(locations=state_counts['state'], locationmode="USA-states", text=state_counts['state'], mode="text", textfont=dict(family="Arial, sans-serif", size=8, color="black"), showlegend=False)
+        fig_map.add_scattergeo(
+            locations=region_state_counts['state'],
+            locationmode="USA-states",
+            text=region_state_counts['state'],
+            mode="text",
+            textfont=dict(family="Arial, sans-serif", size=8, color="black"),
+            showlegend=False
+        )
         fig_map.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'), margin={"r":0,"t":40,"l":0,"b":0})
         st.plotly_chart(fig_map, use_container_width=True)
-        territories_list = ['DC', 'PR', 'GU']
-        territory_counts = state_counts[state_counts['state'].isin(territories_list)]
-        actual_state_counts = state_counts[~state_counts['state'].isin(territories_list)]
-        if not territory_counts.empty:
-            st.markdown("##### Territory-Wise Attendee Count (Not shown on map)")
-            territory_table = territory_counts.sort_values(by='state').set_index('state').T
-            territory_table.rename(index={'attendees': 'Attendees'}, inplace=True)
-            st.table(territory_table.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
-        if not actual_state_counts.empty:
-            st.markdown("##### State-wise Attendee Counts")
-            sorted_states = actual_state_counts.sort_values(by='state')
-            states_per_row = 25
-            num_states = len(sorted_states)
-            for i in range(0, num_states, states_per_row):
-                chunk = sorted_states.iloc[i:i + states_per_row]
-                table_chunk = chunk.set_index('state').T
-                table_chunk.rename(index={'attendees': 'Attendees'}, inplace=True)
-                st.table(table_chunk.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
+
+        # Display region-wise tables
+        st.markdown("##### Region-wise Attendee Counts")
+        # Sort regions numerically
+        region_counts_sorted = region_counts.copy()
+        region_counts_sorted['region_num'] = region_counts_sorted['region'].str.extract('(\d+)').astype(int)
+        region_counts_sorted = region_counts_sorted.sort_values('region_num').drop('region_num', axis=1)
+        region_counts_table = region_counts_sorted.set_index('region').T
+        region_counts_table.rename(index={'attendees': 'Attendees'}, inplace=True)
+        st.table(region_counts_table.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
+
     else:
         st.error("Column 'state/province' not found.")
+
     st.markdown("---")
 
     # --- REGION-WISE NURSING FACILITY VS NON NURSING FACILITY PARTICIPATION ---
@@ -735,5 +779,3 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
-
-
