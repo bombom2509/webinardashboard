@@ -315,7 +315,7 @@ if df is not None:
     headers = [
         'Key Performance Indicators', 'Monthly Analysis', 'Detailed Monthly Workforce Breakdown',
         'Overall Performance by Region', 'Region-wise Nursing vs Non Nursing Attendance',
-        'Attendee Heatmap by State', 'Region-wise Nursing Facility vs Non Nursing facility Participation',
+        'Attendee Heatmap by State', 'Region-wise NF vs Non NF Organizations participation',
         'Registrations vs. Attendance Comparison by Region'
     ]
     for header in headers:
@@ -597,7 +597,7 @@ if df is not None:
     st.markdown("---")
 
     # --- REGION-WISE NURSING FACILITY VS NON NURSING FACILITY PARTICIPATION ---
-    st.header("Region-wise Nursing Facility vs Non Nursing facility Participation")
+    st.header("Region-wise NF vs Non NF Organizations participation")
 
     # Load organization data
     org_data = load_organization_data(kpi_file_location)
@@ -781,3 +781,4 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
