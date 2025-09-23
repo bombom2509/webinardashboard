@@ -45,7 +45,6 @@ def load_data(file_path):
 def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_date_str):
     """
     Generates a comprehensive, multi-page PDF report using Matplotlib.
-    This function is cached to ensure the app loads quickly.
     """
     pdf = FPDF(orientation='L')
     page_width = pdf.w
@@ -66,7 +65,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         df['yearmonth'] = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str)).dt.to_period('M').astype(str)
         df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_facilities_workforce else 'Non-Nursing Facility')
     except KeyError:
-        return None # Return None on error
+        return None
 
     # --- 1. Create the Title Page ---
     pdf.add_page()
@@ -77,7 +76,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     pdf.set_font("Arial", '', 14)
     pdf.cell(0, 10, f"Report Generated on: {report_date_str}", ln=True, align='C')
 
-    # --- 2. Monthly Analysis Chart (WITH UPDATED CALCULATION) ---
+    # --- 2. Monthly Analysis Chart ---
     pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "Monthly Analysis", ln=True)
     monthly_data = df.groupby('yearmonth').agg(
         total_registrants=('attendee type', lambda ser: (ser.str.lower() == 'attendee').sum()),
@@ -94,7 +93,14 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     workforce_detail_monthly = df[df['attended'] == 'Yes'].groupby(['yearmonth', 'facility_type']).size().unstack(fill_value=0)
     fig, ax = plt.subplots(figsize=(12, 5))
     workforce_detail_monthly.plot(kind='bar', stacked=True, ax=ax, color=[LOGO_COLORS["accent_green"], '#D9534F'])
-    ax.set_title('Monthly Workforce Attendance Distribution'); ax.set_ylabel('Attendance Count'); ax.set_xlabel('Month'); ax.tick_params(axis='x', rotation=45); ax.legend(title='Facility Type'); ax.grid(True, linestyle='--', alpha=0.6); fig.tight_layout()
+    ax.set_title('Monthly Workforce Attendance Distribution'); ax.set_ylabel('Attendance Count'); ax.set_xlabel('Month'); ax.tick_params(axis='x', rotation=45); ax.legend(title='Facility Type'); ax.grid(True, linestyle='--', alpha=0.6);
+    
+    # NEW: Add labels to stacked bars
+    for c in ax.containers:
+        labels = [f'{v.get_height():.0f}' if v.get_height() > 0 else '' for v in c]
+        ax.bar_label(c, labels=labels, label_type='center', fontsize=8, color='white', weight='bold')
+
+    fig.tight_layout()
     save_mpl_fig_to_pdf(fig, pdf)
 
     # --- 4. Overall Performance by Region Chart ---
@@ -106,8 +112,13 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     attendees = [regional_performance[regional_performance['region'] == r]['attendees'].sum() for r in labels]
     x = np.arange(len(labels)); width = 0.35
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(x - width/2, registrations, width, label='Registrations', color=LOGO_COLORS["primary_blue"])
-    ax.bar(x + width/2, attendees, width, label='Attendees', color=LOGO_COLORS["accent_green"])
+    rects1 = ax.bar(x - width/2, registrations, width, label='Registrations', color=LOGO_COLORS["primary_blue"])
+    rects2 = ax.bar(x + width/2, attendees, width, label='Attendees', color=LOGO_COLORS["accent_green"])
+    
+    # NEW: Add labels to grouped bars
+    ax.bar_label(rects1, padding=3, fmt='%.0f')
+    ax.bar_label(rects2, padding=3, fmt='%.0f')
+
     ax.set_ylabel('Count'); ax.set_title('Total Registrations vs. Attendees by Region'); ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.6); fig.tight_layout()
     save_mpl_fig_to_pdf(fig, pdf)
 
@@ -117,40 +128,32 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         pdf_obj.set_font("Arial", 'B', 16)
         pdf_obj.cell(0, 10, charts_data['title'], ln=True)
         pdf_obj.ln(5)
-
         sorted_regions = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
-
         margin = 10
         charts_per_row = 4
         chart_dim_mm = 50
         chart_dim_inches = chart_dim_mm / 25.4
-        
         available_width = pdf_obj.w - (2 * margin)
         spacing_x = (available_width - (charts_per_row * chart_dim_mm)) / (charts_per_row - 1) if charts_per_row > 1 else 0
         spacing_y = 15
         y_start = 25
-
         for i, region in enumerate(sorted_regions):
             row = i // charts_per_row
             col = i % charts_per_row
             x_pos = margin + col * (chart_dim_mm + spacing_x)
             y_pos = y_start + row * (chart_dim_mm + spacing_y)
-            
             fig = plot_function(region, chart_dim_inches, chart_dim_inches)
             if fig:
                 save_mpl_fig_to_pdf(fig, pdf_obj, x=x_pos, y=y_pos, w=chart_dim_mm)
-        
         if legend_info:
             legend_fig, legend_ax = plt.subplots(figsize=(2, 0.5))
             patches = [mpatches.Patch(color=c, label=l) for l, c in zip(legend_info['labels'], legend_info['colors'])]
             legend_ax.legend(handles=patches, loc='center', ncol=len(legend_info['labels']), frameon=False, fontsize=9)
             legend_ax.axis('off')
-            
             legend_width_mm = 50
             legend_height_mm = 10
             legend_x = pdf_obj.w - margin - legend_width_mm
             legend_y = pdf_obj.h - margin - legend_height_mm
-            
             save_mpl_fig_to_pdf(legend_fig, pdf_obj, x=legend_x, y=legend_y, w=legend_width_mm)
 
     # --- 5. Plotting function for Doughnut Charts ---
@@ -158,14 +161,12 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         df_region = df[(df['region'] == region) & (df['attended'] == 'Yes')]
         if df_region.empty:
             return None
-        
         breakdown = df_region['facility_type'].value_counts()
-        workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
-        
+        workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': '#D9534F'}
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
         ax.pie(breakdown, labels=None, autopct='%1.1f%%',
-               colors=[workforce_color_map.get(x, '#CCCCCC') for x in breakdown.index], 
-               startangle=90, wedgeprops=dict(width=0.4, edgecolor='w'), 
+               colors=[workforce_color_map.get(x, '#CCCCCC') for x in breakdown.index],
+               startangle=90, wedgeprops=dict(width=0.4, edgecolor='w'),
                textprops={'fontsize': 8, 'color': 'black'})
         ax.set_title(f'{region}', fontsize=10)
         ax.set_aspect('equal')
@@ -176,22 +177,23 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         comp_df = df[(df['region'] == region) & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
         if comp_df.empty:
             return None
-
         monthly_comp = comp_df.groupby('yearmonth').agg(
-            registrations=('attended', 'count'), 
+            registrations=('attended', 'count'),
             attendees=('attended', lambda x: (x == 'Yes').sum())
         ).reset_index()
-        
         labels = monthly_comp['yearmonth']
         registrations = monthly_comp['registrations']
         attendees = monthly_comp['attendees']
         x = np.arange(len(labels))
         width = 0.35
-        
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
-        ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
+        rects1 = ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
+        rects2 = ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
         
+        # NEW: Add labels for small PDF charts
+        ax.bar_label(rects1, padding=2, fmt='%.0f', fontsize=6)
+        ax.bar_label(rects2, padding=2, fmt='%.0f', fontsize=6)
+
         ax.set_ylabel('Count', fontsize=7)
         ax.set_title(f'Monthly - {region}', fontsize=10)
         ax.set_xticks(x)
@@ -212,9 +214,8 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
 
     return bytes(pdf.output())
 
-
 # --- Main App Logic ---
-file_location = "MASTERDASH3.xlsx"
+file_location = r"D:\ALIANT_MICHELLE\EXPORT\MASTERDASH3.xlsx"
 logo_path = "logo.jpeg"
 
 df = load_data(file_location)
@@ -226,6 +227,7 @@ if df is not None:
     headers = [
         'Key Performance Indicators', 'Monthly Analysis', 'Detailed Monthly Workforce Breakdown',
         'Overall Performance by Region', 'Region-wise Nursing vs Non Nursing Attendance',
+        'Attendee Heatmap by State',
         'Registrations vs. Attendance Comparison by Region'
     ]
     for header in headers:
@@ -258,7 +260,7 @@ if df is not None:
         
         nursing_list = [
             'Mental Health Treatment, Nursing Facility','Mental Health Treatment, Nursing Facility, Substance Use Treatment','Mental Health Treatment, Substance Use Treatment, Nursing Facility',
-            'Nursing Facility', 'Nursing Facility, Mental Health Treatment','Nursing Facility, Mental Health Treatment, Other','Nursing Facility, Mental Health Treatment, Substance Use Treatment',
+            'Nursing Facility', 'Nursing Facility, Mental Health Treatment','Nursing Facility, Mental Health Treatment, Other','Nursing Facility, Mental health Treatment, Substance Use Treatment',
             'Nursing Facility, Other', 'Nursing Facility, Substance Use Treatment','Nursing Facility, Substance Use Treatment, Mental Health Treatment','Nursing Facility,Mental Health Treatment,QIN-QIO',
             'Nursing Facility,Mental Health Treatment,Substance Use Treatment,QIN-QIO','Nursing Facility,QIN-QIO', 'Nursing Facility,QIN-QIO,Mental Health Treatment',
             'Nursing Facility,QIN-QIO,Other', 'Other, Nursing Facility','Substance Use Treatment, Nursing Facility'
@@ -318,58 +320,60 @@ if df is not None:
 
     # --- Monthly Analysis Section ---
     st.header("Monthly Analysis")
+    df['is_valid_registrant'] = (df['attendee type'].str.lower() == 'attendee') & (df['attended'].isin(['Yes', 'No']))
     monthly_data = df.groupby('yearmonth').agg(
-        total_registrants=('attendee type', lambda ser: (ser.str.lower() == 'attendee').sum()),
+        total_registrants=('is_valid_registrant', 'sum'),
         total_attendees=('attended', lambda x: (x == 'Yes').sum())
     ).reset_index()
-
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
         fig_bar1 = px.bar(monthly_data, x='yearmonth', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
+        fig_bar1.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+        fig_bar1.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
         st.plotly_chart(fig_bar1, use_container_width=True)
     with chart_col2:
         fig_bar2 = px.bar(monthly_data, x='yearmonth', y='total_attendees', title='Monthly Attendance Distribution', color_discrete_sequence=[LOGO_COLORS["accent_green"]])
+        fig_bar2.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+        fig_bar2.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
         st.plotly_chart(fig_bar2, use_container_width=True)
-    
     fig_line = px.line(monthly_data, x='yearmonth', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
     st.plotly_chart(fig_line, use_container_width=True)
     st.markdown("---")
 
-    # --- MODIFIED DETAILED MONTHLY WORKFORCE BREAKDOWN ---
+    # --- DETAILED MONTHLY WORKFORCE BREAKDOWN ---
     st.header("Detailed Monthly Workforce Breakdown")
-    
-    # Create a pre-filtered DataFrame for the attendance calculation
     attendee_guest_df = df[df['attendee type'].str.title().isin(['Attendee', 'Guest'])]
-    
-    # Perform aggregations
     registrations_by_workforce = df.groupby(['yearmonth', 'facility_type'])['attendee type'].apply(lambda ser: (ser.str.lower() == 'attendee').sum()).reset_index(name='registrations')
     attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth', 'facility_type']).size().reset_index(name='attendance')
-
-    # Merge the two results together for charting
     workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
-    
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
-    
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
+    fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside')
+    fig_reg.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
     st.plotly_chart(fig_reg, use_container_width=True)
-    
     st.subheader("Workforce Attendance")
     fig_att = px.bar(workforce_detail_monthly, x='yearmonth', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
+    fig_att.update_traces(texttemplate='%{y:,.0f}', textposition='inside')
+    fig_att.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
     st.plotly_chart(fig_att, use_container_width=True)
     st.markdown("---")
 
+    # --- OVERALL PERFORMANCE BY REGION ---
     st.header("Overall Performance by Region")
     if 'region' in df.columns:
         regional_performance = df.groupby('region').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
         regional_performance_melted = regional_performance.melt(id_vars='region', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
         sorted_regions_plotly = sorted(regional_performance_melted['region'].unique(), key=lambda r: int(r.replace('Region ', '')))
         fig_region = px.bar(regional_performance_melted, x='region', y='count', color='metric', barmode='group', title='Total Registrations vs. Attendees by Region', color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]}, category_orders={'region': sorted_regions_plotly})
+        fig_region.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+        fig_region.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
         st.plotly_chart(fig_region, use_container_width=True)
     else:
         st.error("Column 'region' not found.")
     st.markdown("---")
 
+    # --- REGION-WISE NURSING VS NON-NURSING ---
     st.header("Region-wise Nursing vs Non Nursing Attendance")
     if 'region' in df.columns:
         region_list_for_doughnut = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
@@ -388,6 +392,96 @@ if df is not None:
         st.error("Column 'region' not found.")
     st.markdown("---")
 
+    # --- ATTENDEE HEATMAP BY STATE SECTION ---
+    st.header("Attendee Heatmap by State")
+    if 'state/province' in df.columns:
+        # Filter data based on the specified conditions
+        heatmap_df = df[
+            (df['attended'] == 'Yes') &
+            (df['attendee type'].str.title().isin(['Attendee', 'Guest']))
+        ].copy()
+
+        # Calculate attendee counts per state/territory
+        state_counts = heatmap_df['state/province'].value_counts().reset_index()
+        state_counts.columns = ['state', 'attendees']
+
+        # 1. Create the base choropleth map
+        fig_map = px.choropleth(
+            state_counts,
+            locations='state',
+            locationmode="USA-states",
+            color='attendees',
+            scope="usa",
+            title="Total Webinar Attendees by State",
+            color_continuous_scale=["#FFFFFF", LOGO_COLORS["primary_blue"]],
+            labels={'attendees': 'Attendees'},
+            hover_name='state'
+        )
+
+        # Keep the enhanced hover tooltip
+        fig_map.update_traces(hovertemplate='<b>%{hovertext}</b><br>Attendees: %{z}<extra></extra>')
+
+        # 2. Add the state abbreviations as a text overlay
+        fig_map.add_scattergeo(
+            locations=state_counts['state'],
+            locationmode="USA-states",
+            text=state_counts['state'],
+            mode="text",
+            textfont=dict(
+                family="Arial, sans-serif",
+                size=8,
+                color="black"
+            ),
+            showlegend=False
+        )
+        
+        fig_map.update_layout(
+            geo=dict(bgcolor='rgba(0,0,0,0)'),
+            margin={"r":0,"t":40,"l":0,"b":0}
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
+
+        # --- Separate Territories from States for Table Display ---
+        territories_list = ['DC', 'PR', 'GU']
+        territory_counts = state_counts[state_counts['state'].isin(territories_list)]
+        actual_state_counts = state_counts[~state_counts['state'].isin(territories_list)]
+        
+        # --- Display Territory Table ---
+        if not territory_counts.empty:
+            st.markdown("##### Territory-Wise Attendee Count (Not shown on map)")
+            territory_table = territory_counts.sort_values(by='state').set_index('state').T
+            territory_table.rename(index={'attendees': 'Attendees'}, inplace=True)
+            st.table(
+                territory_table.style
+                .set_table_styles([dict(selector="th", props=[("text-align", "center")])])
+                .applymap(lambda _: "text-align: center")
+            )
+
+        # --- Display State Tables in Wrapped Rows ---
+        if not actual_state_counts.empty:
+            st.markdown("##### State-wise Attendee Counts")
+            sorted_states = actual_state_counts.sort_values(by='state')
+            
+            states_per_row = 25
+            num_states = len(sorted_states)
+
+            for i in range(0, num_states, states_per_row):
+                chunk = sorted_states.iloc[i:i + states_per_row]
+                
+                table_chunk = chunk.set_index('state').T
+                table_chunk.rename(index={'attendees': 'Attendees'}, inplace=True)
+                
+                st.table(
+                    table_chunk.style
+                    .set_table_styles([dict(selector="th", props=[("text-align", "center")])])
+                    .applymap(lambda _: "text-align: center")
+                )
+        
+    else:
+        st.error("Column 'state/province' not found.")
+    st.markdown("---")
+
+    # --- REGISTRATIONS VS ATTENDANCE COMPARISON ---
     st.header("Registrations vs. Attendance Comparison by Region")
     if 'region' in df.columns and 'attendee type' in df.columns and 'yearmonth' in df.columns:
         region_list_comp = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
@@ -397,18 +491,19 @@ if df is not None:
             monthly_comp = comp_df.groupby('yearmonth').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
             monthly_comp_melted = monthly_comp.melt(id_vars='yearmonth', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
             fig_comp = px.bar(monthly_comp_melted, x='yearmonth', y='count', color='metric', barmode='group', title=f'Monthly Registrations vs. Attendees for {selected_region_comp}', labels={'yearmonth': 'Month'}, color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]})
+            fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+            fig_comp.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', margin=dict(t=80))
             st.plotly_chart(fig_comp, use_container_width=True)
         else:
             st.warning(f"No 'Attendee' or 'Guest' data found for '{selected_region_comp}'.")
     else:
         st.error("One or more required columns not found for regional comparison.")
     
-    # JavaScript for Navigation with Blue Highlighting
+    # JavaScript for Navigation
     st.components.v1.html("""
     <script>
     function initializeNavigation() {
         console.log('Initializing navigation...');
-        
         function setupHeaderIds() {
             const headers = parent.document.querySelectorAll('h2');
             headers.forEach(header => {
@@ -419,30 +514,23 @@ if df is not None:
                 }
             });
         }
-        
         function highlightActiveSection() {
             const headers = Array.from(parent.document.querySelectorAll('h2[id]'));
             const navButtons = Array.from(parent.document.querySelectorAll('.nav-button'));
-            
             if (headers.length === 0 || navButtons.length === 0) return;
-            
             let activeHeaderId = '';
             const scrollPosition = parent.window.scrollY + 100;
-            
             for (let i = headers.length - 1; i >= 0; i--) {
                 const header = headers[i];
                 const headerTop = header.offsetTop;
-                
                 if (scrollPosition >= headerTop) {
                     activeHeaderId = header.id;
                     break;
                 }
             }
-            
             if (!activeHeaderId && headers.length > 0) {
                 activeHeaderId = headers[0].id;
             }
-            
             navButtons.forEach(button => {
                 const targetId = button.getAttribute('data-target');
                 if (targetId === activeHeaderId) {
@@ -452,7 +540,6 @@ if df is not None:
                 }
             });
         }
-        
         function setupSmoothScrolling() {
             const navButtons = parent.document.querySelectorAll('.nav-button');
             navButtons.forEach(button => {
@@ -460,18 +547,15 @@ if df is not None:
                 button.addEventListener('click', handleNavClick);
             });
         }
-        
         function handleNavClick(e) {
             e.preventDefault();
             const targetId = this.getAttribute('data-target');
             const targetElement = parent.document.getElementById(targetId);
-            
             if (targetElement) {
                 targetElement.scrollIntoView({
                     behavior: 'smooth',
                     block: 'start'
                 });
-                
                 setTimeout(() => {
                     const allNavButtons = parent.document.querySelectorAll('.nav-button');
                     allNavButtons.forEach(btn => btn.classList.remove('active'));
@@ -479,7 +563,6 @@ if df is not None:
                 }, 100);
             }
         }
-        
         function debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
@@ -491,15 +574,12 @@ if df is not None:
                 timeout = setTimeout(later, wait);
             };
         }
-        
         setupHeaderIds();
         setupSmoothScrolling();
         highlightActiveSection();
-        
         const debouncedHighlight = debounce(highlightActiveSection, 100);
         parent.window.addEventListener('scroll', debouncedHighlight);
     }
-
     if (parent.document.readyState === 'loading') {
         parent.document.addEventListener('DOMContentLoaded', initializeNavigation);
     } else {
@@ -510,7 +590,3 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
-
-
-
-
