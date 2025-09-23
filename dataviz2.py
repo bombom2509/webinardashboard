@@ -62,6 +62,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
 
     # --- Data Preparation ---
     try:
+        # NOTE: Using original YYYY-MM for PDF sorting/display
         df['yearmonth'] = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str)).dt.to_period('M').astype(str)
         df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_facilities_workforce else 'Non-Nursing Facility')
     except KeyError:
@@ -310,7 +311,13 @@ if df is not None:
     st.markdown("---")
 
     try:
-        df['yearmonth'] = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str), format='mixed').dt.to_period('M').astype(str)
+        # --- MODIFIED: Create two date columns for sorting and display ---
+        datetime_series = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str), format='mixed')
+        # Column for chronological sorting (YYYY-MM)
+        df['yearmonth_sort'] = datetime_series.dt.to_period('M').astype(str)
+        # Column for user-friendly display (Mon - YY)
+        df['yearmonth_display'] = datetime_series.dt.strftime('%b - %y')
+
         df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_list else 'Non-Nursing Facility')
     except KeyError:
         st.error("Error: Could not find 'year' and 'month' columns for dashboard charts."); st.stop()
@@ -318,27 +325,33 @@ if df is not None:
     # --- Monthly Analysis Section ---
     st.header("Monthly Analysis")
     df['is_valid_registrant'] = (df['attendee type'].str.lower() == 'attendee') & (df['attended'].isin(['Yes', 'No']))
-    monthly_data = df.groupby('yearmonth').agg(
+    # MODIFIED: Group by both sort and display columns
+    monthly_data = df.groupby(['yearmonth_sort', 'yearmonth_display']).agg(
         total_registrants=('is_valid_registrant', 'sum'),
         total_attendees=('attended', lambda x: (x == 'Yes').sum())
     ).reset_index()
+    
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
-        fig_bar1 = px.bar(monthly_data, x='yearmonth', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
+        # MODIFIED: Use display column for x-axis
+        fig_bar1 = px.bar(monthly_data, x='yearmonth_display', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
         fig_bar1.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
         fig_bar1.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_bar1, use_container_width=True)
     with chart_col2:
-        fig_bar2 = px.bar(monthly_data, x='yearmonth', y='total_attendees', title='Monthly Attendance Distribution', color_discrete_sequence=[LOGO_COLORS["accent_green"]])
+        # MODIFIED: Use display column for x-axis
+        fig_bar2 = px.bar(monthly_data, x='yearmonth_display', y='total_attendees', title='Monthly Attendance Distribution', color_discrete_sequence=[LOGO_COLORS["accent_green"]])
         fig_bar2.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
         fig_bar2.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_bar2, use_container_width=True)
-    fig_line = px.line(monthly_data, x='yearmonth', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
+    
+    # MODIFIED: Use display column for x-axis
+    fig_line = px.line(monthly_data, x='yearmonth_display', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
     st.plotly_chart(fig_line, use_container_width=True)
     
-    # --- NEW: Added horizontal table for Monthly Analysis ---
     st.markdown("##### Monthly Summary Data")
-    monthly_summary_table = monthly_data.set_index('yearmonth').T
+    # MODIFIED: Use display column for table index
+    monthly_summary_table = monthly_data.drop('yearmonth_sort', axis=1).set_index('yearmonth_display').T
     monthly_summary_table.rename(index={'total_registrants': 'Total Registrants', 'total_attendees': 'Total Attendees'}, inplace=True)
     st.table(monthly_summary_table)
 
@@ -347,36 +360,48 @@ if df is not None:
     # --- DETAILED MONTHLY WORKFORCE BREAKDOWN ---
     st.header("Detailed Monthly Workforce Breakdown")
     attendee_guest_df = df[df['attendee type'].str.title().isin(['Attendee', 'Guest'])]
-    registrations_by_workforce = df.groupby(['yearmonth', 'facility_type'])['attendee type'].apply(lambda ser: (ser.str.lower() == 'attendee').sum()).reset_index(name='registrations')
-    attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth', 'facility_type']).size().reset_index(name='attendance')
-    workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth', 'facility_type'], how='left').fillna(0)
+    # MODIFIED: Group by both sort and display columns
+    registrations_by_workforce = df.groupby(['yearmonth_sort', 'yearmonth_display', 'facility_type'])['attendee type'].apply(lambda ser: (ser.str.lower() == 'attendee').sum()).reset_index(name='registrations')
+    attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth_sort', 'yearmonth_display', 'facility_type']).size().reset_index(name='attendance')
+    
+    workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth_sort', 'yearmonth_display', 'facility_type'], how='left').fillna(0)
+    
+    # --- MODIFIED: Cast counts to integer to remove decimals ---
+    workforce_detail_monthly['registrations'] = workforce_detail_monthly['registrations'].astype(int)
+    workforce_detail_monthly['attendance'] = workforce_detail_monthly['attendance'].astype(int)
+
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
     
     st.subheader("Workforce Registration")
-    fig_reg = px.bar(workforce_detail_monthly, x='yearmonth', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
+    # MODIFIED: Use display column for x-axis
+    fig_reg = px.bar(workforce_detail_monthly, x='yearmonth_display', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
     fig_reg.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_reg, use_container_width=True)
 
-    # --- NEW: Added horizontal table for Workforce Registration ---
     st.markdown("##### Registration Data by Workforce")
+    # MODIFIED: Use display column for table columns
     reg_table_data = workforce_detail_monthly.pivot(
-        index='facility_type', columns='yearmonth', values='registrations'
+        index='facility_type', columns='yearmonth_display', values='registrations'
     ).rename_axis(None, axis=1).rename_axis(None, axis=0)
-    st.table(reg_table_data)
+    # Reorder columns to match chart's chronological order
+    ordered_months = workforce_detail_monthly.sort_values('yearmonth_sort')['yearmonth_display'].unique()
+    st.table(reg_table_data[ordered_months])
 
     st.subheader("Workforce Attendance")
-    fig_att = px.bar(workforce_detail_monthly, x='yearmonth', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
+    # MODIFIED: Use display column for x-axis
+    fig_att = px.bar(workforce_detail_monthly, x='yearmonth_display', y='attendance', color='facility_type', title='Monthly Workforce Attendance Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     fig_att.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
     fig_att.update_layout(margin=dict(t=80))
     st.plotly_chart(fig_att, use_container_width=True)
 
-    # --- NEW: Added horizontal table for Workforce Attendance ---
     st.markdown("##### Attendance Data by Workforce")
+    # MODIFIED: Use display column for table columns
     att_table_data = workforce_detail_monthly.pivot(
-        index='facility_type', columns='yearmonth', values='attendance'
+        index='facility_type', columns='yearmonth_display', values='attendance'
     ).rename_axis(None, axis=1).rename_axis(None, axis=0)
-    st.table(att_table_data)
+    # Reorder columns to match chart's chronological order
+    st.table(att_table_data[ordered_months])
     
     st.markdown("---")
 
@@ -391,7 +416,6 @@ if df is not None:
         fig_region.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_region, use_container_width=True)
 
-        # --- NEW: Added horizontal table for Regional Performance ---
         st.markdown("##### Regional Performance Data")
         sorted_regional_performance = regional_performance.set_index('region').loc[sorted_regions_plotly].reset_index()
         regional_table = sorted_regional_performance.set_index('region').T
@@ -415,7 +439,6 @@ if df is not None:
             fig_doughnut.update_layout(legend_title_text='Facility Type')
             st.plotly_chart(fig_doughnut, use_container_width=True)
 
-            # --- NEW: Added horizontal table for Doughnut Chart Data ---
             st.markdown("##### Attendance Breakdown Data")
             doughnut_table = attendance_breakdown.set_index('facility_type').T.rename(index={'count': 'Attendees'})
             st.table(doughnut_table)
@@ -428,109 +451,56 @@ if df is not None:
     # --- ATTENDEE HEATMAP BY STATE SECTION ---
     st.header("Attendee Heatmap by State")
     if 'state/province' in df.columns:
-        # Filter data based on the specified conditions
-        heatmap_df = df[
-            (df['attended'] == 'Yes') &
-            (df['attendee type'].str.title().isin(['Attendee', 'Guest']))
-        ].copy()
-
-        # Calculate attendee counts per state/territory
+        heatmap_df = df[(df['attended'] == 'Yes') & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
         state_counts = heatmap_df['state/province'].value_counts().reset_index()
         state_counts.columns = ['state', 'attendees']
-
-        # 1. Create the base choropleth map
-        fig_map = px.choropleth(
-            state_counts,
-            locations='state',
-            locationmode="USA-states",
-            color='attendees',
-            scope="usa",
-            title="Total Webinar Attendees by State",
-            color_continuous_scale=["#FFFFFF", LOGO_COLORS["primary_blue"]],
-            labels={'attendees': 'Attendees'},
-            hover_name='state'
-        )
-
-        # Keep the enhanced hover tooltip
+        fig_map = px.choropleth(state_counts, locations='state', locationmode="USA-states", color='attendees', scope="usa", title="Total Webinar Attendees by State", color_continuous_scale=["#FFFFFF", LOGO_COLORS["primary_blue"]], labels={'attendees': 'Attendees'}, hover_name='state')
         fig_map.update_traces(hovertemplate='<b>%{hovertext}</b><br>Attendees: %{z}<extra></extra>')
-
-        # 2. Add the state abbreviations as a text overlay
-        fig_map.add_scattergeo(
-            locations=state_counts['state'],
-            locationmode="USA-states",
-            text=state_counts['state'],
-            mode="text",
-            textfont=dict(
-                family="Arial, sans-serif",
-                size=8,
-                color="black"
-            ),
-            showlegend=False
-        )
-        
-        fig_map.update_layout(
-            geo=dict(bgcolor='rgba(0,0,0,0)'),
-            margin={"r":0,"t":40,"l":0,"b":0}
-        )
+        fig_map.add_scattergeo(locations=state_counts['state'], locationmode="USA-states", text=state_counts['state'], mode="text", textfont=dict(family="Arial, sans-serif", size=8, color="black"), showlegend=False)
+        fig_map.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'), margin={"r":0,"t":40,"l":0,"b":0})
         st.plotly_chart(fig_map, use_container_width=True)
-
-        # --- Separate Territories from States for Table Display ---
         territories_list = ['DC', 'PR', 'GU']
         territory_counts = state_counts[state_counts['state'].isin(territories_list)]
         actual_state_counts = state_counts[~state_counts['state'].isin(territories_list)]
-        
-        # --- Display Territory Table ---
         if not territory_counts.empty:
             st.markdown("##### Territory-Wise Attendee Count (Not shown on map)")
             territory_table = territory_counts.sort_values(by='state').set_index('state').T
             territory_table.rename(index={'attendees': 'Attendees'}, inplace=True)
-            st.table(
-                territory_table.style
-                .set_table_styles([dict(selector="th", props=[("text-align", "center")])])
-                .applymap(lambda _: "text-align: center")
-            )
-
-        # --- Display State Tables in Wrapped Rows ---
+            st.table(territory_table.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
         if not actual_state_counts.empty:
             st.markdown("##### State-wise Attendee Counts")
             sorted_states = actual_state_counts.sort_values(by='state')
-            
             states_per_row = 25
             num_states = len(sorted_states)
-
             for i in range(0, num_states, states_per_row):
                 chunk = sorted_states.iloc[i:i + states_per_row]
-                
                 table_chunk = chunk.set_index('state').T
                 table_chunk.rename(index={'attendees': 'Attendees'}, inplace=True)
-                
-                st.table(
-                    table_chunk.style
-                    .set_table_styles([dict(selector="th", props=[("text-align", "center")])])
-                    .applymap(lambda _: "text-align: center")
-                )
-        
+                st.table(table_chunk.style.set_table_styles([dict(selector="th", props=[("text-align", "center")])]).applymap(lambda _: "text-align: center"))
     else:
         st.error("Column 'state/province' not found.")
     st.markdown("---")
 
     # --- REGISTRATIONS VS ATTENDANCE COMPARISON ---
     st.header("Registrations vs. Attendance Comparison by Region")
-    if 'region' in df.columns and 'attendee type' in df.columns and 'yearmonth' in df.columns:
+    if 'region' in df.columns and 'attendee type' in df.columns:
         region_list_comp = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
         selected_region_comp = st.selectbox('Select a Region for Comparison:', options=region_list_comp, key='region_comparison_selectbox')
         comp_df = df[(df['region'] == selected_region_comp) & (df['attendee type'].str.title().isin(['Attendee', 'Guest']))].copy()
         if not comp_df.empty:
-            monthly_comp = comp_df.groupby('yearmonth').agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
-            monthly_comp_melted = monthly_comp.melt(id_vars='yearmonth', value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
-            fig_comp = px.bar(monthly_comp_melted, x='yearmonth', y='count', color='metric', barmode='group', title=f'Monthly Registrations vs. Attendees for {selected_region_comp}', labels={'yearmonth': 'Month'}, color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]})
+            # MODIFIED: Group by both sort and display columns
+            monthly_comp = comp_df.groupby(['yearmonth_sort', 'yearmonth_display']).agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
+            monthly_comp_melted = monthly_comp.melt(id_vars=['yearmonth_sort', 'yearmonth_display'], value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
+            
+            # MODIFIED: Use display column for x-axis
+            fig_comp = px.bar(monthly_comp_melted, x='yearmonth_display', y='count', color='metric', barmode='group', title=f'Monthly Registrations vs. Attendees for {selected_region_comp}', labels={'yearmonth_display': 'Month'}, color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]})
             fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
             fig_comp.update_layout(margin=dict(t=80))
             st.plotly_chart(fig_comp, use_container_width=True)
 
-            # --- NEW: Added horizontal table for Regional Comparison ---
             st.markdown(f"##### Monthly Data for {selected_region_comp}")
-            comp_table = monthly_comp.set_index('yearmonth').T
+            # MODIFIED: Use display column for table index
+            comp_table = monthly_comp.drop('yearmonth_sort', axis=1).set_index('yearmonth_display').T
             comp_table.rename(index={'registrations': 'Registrations', 'attendees': 'Attendees'}, inplace=True)
             st.table(comp_table)
         else:
