@@ -335,7 +335,7 @@ def create_monthly_webinar_count_chart(df):
         x='yearmonth_display',
         y='webinar_count',
         title='Number of Webinars Hosted per Month',
-        color_discrete_sequence=[LOGO_COLORS["primary_blue"]] # You can change this color
+        color_discrete_sequence=[LOGO_COLORS["accent_green"]] # You can change this color
     )
     fig.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
     fig.update_layout(
@@ -920,4 +920,5 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
 
