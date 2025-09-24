@@ -83,7 +83,7 @@ def load_kpi_from_cells(file_path):
     except Exception as e:
         st.error(f"Error reading KPI file: {e}")
         return 0, 0, 0 # Return zeros on other errors
-    
+
 @st.cache_data
 def load_organization_data(file_path):
     try:
@@ -95,33 +95,33 @@ def load_organization_data(file_path):
             skiprows=1,   # Skip the first row
             nrows=3       # Read rows 2, 3, and 4 (which become 0, 1, 2 in the dataframe)
         )
-        
+
         # Extract headers (row 2 in Excel, row 0 in our dataframe)
         headers = org_df.iloc[0, 1:].values  # Skip column A, get from column B onwards
-        
+
         # Extract NFO data (row 3 in Excel, row 1 in our dataframe)
         nfo_data = org_df.iloc[1, 1:].values  # Skip column A, get from column B onwards
-        
+
         # Extract Non-NFO data (row 4 in Excel, row 2 in our dataframe)
         non_nfo_data = org_df.iloc[2, 1:].values  # Skip column A, get from column B onwards
-        
+
         # Create the final dataframe
         org_data = pd.DataFrame({
             'month_year': headers,
             'nursing_facility_orgs': nfo_data,
             'non_nursing_facility_orgs': non_nfo_data
         })
-        
+
         # Clean the data - convert to numeric and handle any missing values
         org_data['nursing_facility_orgs'] = pd.to_numeric(org_data['nursing_facility_orgs'], errors='coerce').fillna(0)
         org_data['non_nursing_facility_orgs'] = pd.to_numeric(org_data['non_nursing_facility_orgs'], errors='coerce').fillna(0)
-        
+
         # Remove any rows where month_year is NaN or empty
         org_data = org_data.dropna(subset=['month_year'])
         org_data = org_data[org_data['month_year'].astype(str).str.strip() != '']
-        
+
         return org_data
-        
+
     except FileNotFoundError:
         st.error(f"Error: The file '{file_path}' was not found.")
         return None
@@ -184,7 +184,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     fig, ax = plt.subplots(figsize=(12, 5))
     workforce_detail_monthly.plot(kind='bar', stacked=True, ax=ax, color=[LOGO_COLORS["accent_green"], '#D9534F'])
     ax.set_title('Monthly Workforce Attendance Distribution'); ax.set_ylabel('Attendance Count'); ax.set_xlabel('Month'); ax.tick_params(axis='x', rotation=45); ax.legend(title='Facility Type'); ax.grid(True, linestyle='--', alpha=0.6);
-    
+
     for c in ax.containers:
         labels = [f'{v.get_height():.0f}' if v.get_height() > 0 else '' for v in c]
         ax.bar_label(c, labels=labels, label_type='center', fontsize=8, color='white', weight='bold')
@@ -203,7 +203,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
     fig, ax = plt.subplots(figsize=(12, 6))
     rects1 = ax.bar(x - width/2, registrations, width, label='Registrations', color=LOGO_COLORS["primary_blue"])
     rects2 = ax.bar(x + width/2, attendees, width, label='Attendees', color=LOGO_COLORS["accent_green"])
-    
+
     ax.bar_label(rects1, padding=3, fmt='%.0f')
     ax.bar_label(rects2, padding=3, fmt='%.0f')
 
@@ -277,7 +277,7 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
         rects1 = ax.bar(x - width/2, registrations, width, label='Regs', color=LOGO_COLORS["primary_blue"])
         rects2 = ax.bar(x + width/2, attendees, width, label='Atts', color=LOGO_COLORS["accent_green"])
-        
+
         ax.bar_label(rects1, padding=2, fmt='%.0f', fontsize=6)
         ax.bar_label(rects2, padding=2, fmt='%.0f', fontsize=6)
 
@@ -321,7 +321,7 @@ if df is not None:
     for header in headers:
         anchor = header.lower().replace(' ', '-').replace('.', '')
         st.sidebar.markdown(f'<a href="#{anchor}" class="nav-button" data-target="{anchor}">{header}</a>', unsafe_allow_html=True)
-    
+
     st.markdown(f"""
     <style>
         .main {{ background-color: #f5f5ff; }}
@@ -345,7 +345,7 @@ if df is not None:
 
     with col2:
         st.markdown("<div style='height: 2.5rem;'></div>", unsafe_allow_html=True)
-        
+
         nursing_list = [
             'Mental Health Treatment, Nursing Facility','Mental Health Treatment, Nursing Facility, Substance Use Treatment','Mental Health Treatment, Substance Use Treatment, Nursing Facility',
             'Nursing Facility', 'Nursing Facility, Mental Health Treatment','Nursing Facility, Mental Health Treatment, Other','Nursing Facility, Mental health Treatment, Substance Use Treatment',
@@ -353,7 +353,7 @@ if df is not None:
             'Nursing Facility,Mental Health Treatment,Substance Use Treatment,QIN-QIO','Nursing Facility,QIN-QIO', 'Nursing Facility,QIN-QIO,Mental Health Treatment',
             'Nursing Facility,QIN-QIO,Other', 'Other, Nursing Facility','Substance Use Treatment, Nursing Facility'
         ]
-        
+
         report_date = pd.Timestamp.now().strftime('%Y-%m-%d')
         pdf_bytes = create_full_report_pdf(df.copy(), logo_path, nursing_list, report_date)
 
@@ -369,21 +369,21 @@ if df is not None:
             st.error("PDF could not be generated.")
 
     st.markdown("---")
-    
+
     # --- KPIs and Dashboard Content ---
     st.header('Key Performance Indicators')
-    
+
     registrants = df[df['attendee type'].str.title().isin(['Attendee', 'Guest'])].shape[0]
     attendee_filtered_df = df[(df['attendee type'].str.title().isin(['Attendee', 'Guest'])) & (df['attended'] == 'Yes')]
     attendees = attendee_filtered_df.shape[0]
     nursing_facility_attendees = attendee_filtered_df[attendee_filtered_df['workforce'].isin(nursing_list)].shape[0]
     non_nursing_facility_attendees = attendee_filtered_df[~attendee_filtered_df['workforce'].isin(nursing_list)].shape[0]
     total_engagement_hours = attendee_filtered_df['time in session (minutes)'].sum() / 60
-    
+
     total_orgs, nursing_facility_orgs, non_nursing_facility_orgs = load_kpi_from_cells(kpi_file_location)
-    
+
     total_webinar_duration = df.groupby('webinar id')['actual duration (minutes)'].first().sum() / 60
-    
+
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
     with kpi_col1:
         st.metric(label="Total Registrants", value=f"{registrants:,.0f}")
@@ -397,7 +397,7 @@ if df is not None:
     with kpi_col4:
         st.metric(label="Non-Nursing Facility Attendees", value=f"{non_nursing_facility_attendees:,}")
         st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
-    
+
     st.metric(label="Total Unique Session Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
     st.markdown("---")
 
@@ -423,7 +423,7 @@ if df is not None:
         # Sum the 'Yes' values for total attendees within the filtered group
         total_attendees=('attended', lambda x: (x == 'Yes').sum())
     ).reset_index()
-    
+
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
         fig_bar1 = px.bar(monthly_data, x='yearmonth_display', y='total_registrants', title='Monthly Registration Distribution', color_discrete_sequence=[LOGO_COLORS["primary_blue"]])
@@ -435,10 +435,10 @@ if df is not None:
         fig_bar2.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
         fig_bar2.update_layout(margin=dict(t=80))
         st.plotly_chart(fig_bar2, use_container_width=True)
-    
+
     fig_line = px.line(monthly_data, x='yearmonth_display', y=['total_registrants', 'total_attendees'], title='Monthly Registration vs. Attendance', labels={'value': 'Count', 'variable': 'Metric'}, color_discrete_sequence=[LOGO_COLORS["primary_blue"], LOGO_COLORS["accent_green"]])
     st.plotly_chart(fig_line, use_container_width=True)
-    
+
     st.markdown("##### Monthly Summary Data")
     monthly_summary_table = monthly_data.drop('yearmonth_sort', axis=1).set_index('yearmonth_display').T
     monthly_summary_table.rename(index={'total_registrants': 'Total Registrants', 'total_attendees': 'Total Attendees'}, inplace=True)
@@ -453,14 +453,14 @@ if df is not None:
     registrations_by_workforce = df.groupby(['yearmonth_sort', 'yearmonth_display', 'facility_type'])['attendee type'].apply(
         lambda ser: ser.str.lower().isin(['attendee', 'guest']).sum()).reset_index(name='registrations')
     attendance_by_workforce = attendee_guest_df[attendee_guest_df['attended'] == 'Yes'].groupby(['yearmonth_sort', 'yearmonth_display', 'facility_type']).size().reset_index(name='attendance')
-    
+
     workforce_detail_monthly = pd.merge(registrations_by_workforce, attendance_by_workforce, on=['yearmonth_sort', 'yearmonth_display', 'facility_type'], how='left').fillna(0)
-    
+
     workforce_detail_monthly['registrations'] = workforce_detail_monthly['registrations'].astype(int)
     workforce_detail_monthly['attendance'] = workforce_detail_monthly['attendance'].astype(int)
 
     workforce_color_map = {'Nursing Facility': LOGO_COLORS["accent_green"], 'Non-Nursing Facility': LOGO_COLORS["primary_blue"]}
-    
+
     st.subheader("Workforce Registration")
     fig_reg = px.bar(workforce_detail_monthly, x='yearmonth_display', y='registrations', color='facility_type', title='Monthly Workforce Registration Distribution', barmode='stack', color_discrete_map=workforce_color_map)
     fig_reg.update_traces(texttemplate='%{y:,.0f}', textposition='inside', textangle=0)
@@ -481,7 +481,7 @@ if df is not None:
     st.markdown("##### Attendance Data by Workforce")
     att_table_data = workforce_detail_monthly.pivot(index='facility_type', columns='yearmonth_display', values='attendance').rename_axis(None, axis=1).rename_axis(None, axis=0)
     st.table(att_table_data[ordered_months])
-    
+
     st.markdown("---")
 
     # --- OVERALL PERFORMANCE BY REGION ---
@@ -543,11 +543,11 @@ if df is not None:
     if 'region' in df.columns:
         region_list_for_doughnut = sorted(df['region'].dropna().unique(), key=lambda r: int(r.replace('Region ', '')))
         selected_region_doughnut = st.selectbox('Select a Region to Display:', options=region_list_for_doughnut, key='region_doughnut_selectbox')
-        
+
         # This filter now includes the attendee type check
         region_doughnut_df = df[
-            (df['region'] == selected_region_doughnut) & 
-            (df['attended'] == 'Yes') & 
+            (df['region'] == selected_region_doughnut) &
+            (df['attended'] == 'Yes') &
             (df['attendee type'].str.lower().isin(['attendee', 'guest']))
         ]
 
@@ -555,12 +555,12 @@ if df is not None:
             attendance_breakdown = region_doughnut_df['facility_type'].value_counts().reset_index()
             attendance_breakdown.columns = ['facility_type', 'count']
             fig_doughnut = px.pie(
-                attendance_breakdown, 
-                names='facility_type', 
-                values='count', 
-                title=f'Nursing vs. Non-Nursing Attendance in {selected_region_doughnut}', 
-                hole=0.4, 
-                color='facility_type', 
+                attendance_breakdown,
+                names='facility_type',
+                values='count',
+                title=f'Nursing vs. Non-Nursing Attendance in {selected_region_doughnut}',
+                hole=0.4,
+                color='facility_type',
                 color_discrete_map=workforce_color_map
             )
             fig_doughnut.update_traces(textinfo='percent+label', pull=[0.05, 0])
@@ -582,7 +582,7 @@ if df is not None:
     if 'state/province' in df.columns:
         # Filter only attended and relevant attendee types
         heatmap_df = df[(df['attended'] == 'Yes') & (df['attendee type'].str.strip().str.title().isin(['Attendee', 'Guest']))].copy()
-        
+
         # Map states/territories to regions
         region_map = {
             "Region 1": ["CT", "ME", "MA", "NH", "RI", "VT"],
@@ -655,69 +655,57 @@ if df is not None:
     # --- REGION-WISE NURSING FACILITY VS NON NURSING FACILITY PARTICIPATION ---
     st.header("Region-wise Nursing Facility vs Non Nursing facility Participation")
 
-    # Load organization data
-    org_data = load_organization_data(kpi_file_location)
+    # --- STEP 1: Load the data from your new "Table" sheet ---
+    try:
+        org_data = pd.read_excel(kpi_file_location, sheet_name='Table')
+        org_data['Date'] = pd.to_datetime(org_data['Date'])
+    except Exception as e:
+        st.error(f"Error loading the 'Table' sheet: {e}")
+        org_data = None
 
     if org_data is not None and not org_data.empty:
-        # Prepare data for plotting
+        # --- STEP 2: Reshape the data from wide to long using .melt() ---
         org_data_melted = org_data.melt(
-            id_vars='month_year', 
-            value_vars=['nursing_facility_orgs', 'non_nursing_facility_orgs'],
-            var_name='organization_type', 
-            value_name='count'
+            id_vars='Date',
+            value_vars=['NF Orgs', 'Non NF Orgs'],
+            var_name='Organization Type',
+            value_name='Count'
         )
-        
-        # Create readable labels
-        org_data_melted['organization_type'] = org_data_melted['organization_type'].replace({
-            'nursing_facility_orgs': 'Nursing Facility Organizations',
-            'non_nursing_facility_orgs': 'Non-Nursing Facility Organizations'
-        })
-        
-        # Color mapping
-        org_color_map = {
-            'Nursing Facility Organizations': LOGO_COLORS["primary_blue"],
-            'Non-Nursing Facility Organizations': '#DC3545'  # Red color
-        }
-        
-        # Create the grouped bar chart
+
+        # --- STEP 3: Create the bar chart ---
         fig_org = px.bar(
-            org_data_melted, 
-            x='month_year', 
-            y='count', 
-            color='organization_type', 
+            org_data_melted,
+            x='Date',
+            y='Count',
+            color='Organization Type',
             barmode='group',
             title='Monthly Nursing Facility vs Non-Nursing Facility Organization Participation',
-            color_discrete_map=org_color_map,
-            labels={'count': 'Number of Organizations', 'month_year': 'Month-Year'}
+            labels={
+                'Count': 'Number of Organizations',
+                'Date': 'Date',
+                'Organization Type': 'Organization Type'
+            },
+            color_discrete_map={
+                'NF Orgs': LOGO_COLORS["primary_blue"],
+                'Non NF Orgs': '#DC3545'
+            }
         )
         
-        # Update chart formatting
-        fig_org.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
-        fig_org.update_layout(
-            margin=dict(t=80),
-            xaxis_tickangle=-45,  # Rotate x-axis labels for better readability
-            legend_title_text='Organization Type'
-        )
-        
-        # Display the chart
-        st.plotly_chart(fig_org, use_container_width=True)
-        
-        # Display data table
-        st.markdown("##### Monthly Organization Participation Data")
-        org_table = org_data.copy()
-        org_table['month_year'] = org_table['month_year'].astype(str)
-        org_table = org_table.set_index('month_year').T
-        org_table.rename(index={
-            'nursing_facility_orgs': 'Nursing Facility Organizations',
-            'non_nursing_facility_orgs': 'Non-Nursing Facility Organizations'
-        }, inplace=True)
+        # Add values on top of the bars and adjust margin
+        fig_org.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+        fig_org.update_layout(margin=dict(t=80))
 
-        # Format numbers in table for better display
-        org_table = org_table.astype(int)
-        st.table(org_table)
-        
-    else:
-        st.warning("Could not load organization data from the conso sheet. Please check the file and sheet structure.")
+        st.plotly_chart(fig_org, use_container_width=True)
+
+        # Create and display the summary data table
+        st.markdown("##### Monthly Organization Participation Data")
+        # Use the original org_data DataFrame before it was melted
+        table_df = org_data.copy()
+        # Format the date to be more readable in the table headers
+        table_df['Date'] = table_df['Date'].dt.strftime('%b - %y')
+        # Set Date as the index and transpose the table for the desired layout
+        display_table = table_df.set_index('Date').T
+        st.table(display_table)
 
     st.markdown("---")
 
@@ -730,7 +718,7 @@ if df is not None:
         if not comp_df.empty:
             monthly_comp = comp_df.groupby(['yearmonth_sort', 'yearmonth_display']).agg(registrations=('attended', 'count'), attendees=('attended', lambda x: (x == 'Yes').sum())).reset_index()
             monthly_comp_melted = monthly_comp.melt(id_vars=['yearmonth_sort', 'yearmonth_display'], value_vars=['registrations', 'attendees'], var_name='metric', value_name='count')
-            
+
             fig_comp = px.bar(monthly_comp_melted, x='yearmonth_display', y='count', color='metric', barmode='group', title=f'Monthly Registrations vs. Attendees for {selected_region_comp}', labels={'yearmonth_display': 'Month'}, color_discrete_map={'registrations': LOGO_COLORS["primary_blue"], 'attendees': LOGO_COLORS["accent_green"]})
             fig_comp.update_traces(texttemplate='%{y:,.0f}', textposition='outside', textangle=0)
             fig_comp.update_layout(margin=dict(t=80))
@@ -745,7 +733,7 @@ if df is not None:
             st.warning(f"No 'Attendee' or 'Guest' data found for '{selected_region_comp}'.")
     else:
         st.error("One or more required columns not found for regional comparison.")
-    
+
     # JavaScript for Navigation
     st.components.v1.html("""
     <script>
