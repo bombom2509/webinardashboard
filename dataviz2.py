@@ -335,7 +335,7 @@ def create_monthly_webinar_count_chart(df):
         x='yearmonth_display',
         y='webinar_count',
         title='Number of Webinars Hosted per Month',
-        color_discrete_sequence=[LOGO_COLORS["accent_green"]]
+        color_discrete_sequence=[LOGO_COLORS["primary_blue"]] # You can change this color
     )
     fig.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
     fig.update_layout(
@@ -431,39 +431,66 @@ if df is not None:
     # --- KPIs and Dashboard Content ---
     st.header('Key Performance Indicators')
 
+    # --- KPI CALCULATIONS ---
+    # Calculate Total Webinars from the monthly count data
+    fig_webinar_count, monthly_events_df = create_monthly_webinar_count_chart(df)
+    total_webinars = monthly_events_df['webinar_count'].sum() if monthly_events_df is not None else 0
+
+    # Registrant and Attendee calculations
     registrants = df[df['attendee type'].str.title().isin(['Attendee', 'Guest'])].shape[0]
     attendee_filtered_df = df[(df['attendee type'].str.title().isin(['Attendee', 'Guest'])) & (df['attended'] == 'Yes')]
     attendees = attendee_filtered_df.shape[0]
+    
+    # NEW: Calculate Attendance Rate
+    attendance_rate = (attendees / registrants) * 100 if registrants > 0 else 0
+
+    # Workforce and engagement calculations
     nursing_facility_attendees = attendee_filtered_df[attendee_filtered_df['workforce'].isin(nursing_list)].shape[0]
     non_nursing_facility_attendees = attendee_filtered_df[~attendee_filtered_df['workforce'].isin(nursing_list)].shape[0]
     total_engagement_hours = attendee_filtered_df['time in session (minutes)'].sum() / 60
-
+    total_webinar_duration = df.groupby('webinar id')['actual duration (minutes)'].first().sum() / 60
+    
+    # Organization data from external file
     total_orgs, nursing_facility_orgs, non_nursing_facility_orgs = load_kpi_from_cells(kpi_file_location)
 
-    total_webinar_duration = df.groupby('webinar id')['actual duration (minutes)'].first().sum() / 60
 
-    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+    # --- KPI DISPLAY ---
+    # Row 1: 3 KPIs
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
     with kpi_col1:
-        st.metric(label="Total Registrants", value=f"{registrants:,.0f}")
-        st.metric(label="Total Organizations", value=f"{total_orgs:,}")
+        st.metric(label="Total Webinars", value=f"{total_webinars:,.0f}")
     with kpi_col2:
-        st.metric(label="Total Attendees", value=f"{attendees:,}")
-        st.metric(label="Nursing Facility Orgs", value=f"{nursing_facility_orgs:,}")
+        st.metric(label="Total Registrants", value=f"{registrants:,.0f}")
     with kpi_col3:
-        st.metric(label="Nursing Facility Attendees", value=f"{nursing_facility_attendees:,}")
-        st.metric(label="Non-Nursing Facility Orgs", value=f"{non_nursing_facility_orgs:,}")
-    with kpi_col4:
-        st.metric(label="Non-Nursing Facility Attendees", value=f"{non_nursing_facility_attendees:,}")
-        st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
+        st.metric(label="Total Attendees", value=f"{attendees:,}")
 
-    st.metric(label="Total Unique Session Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
+    # Row 2: 3 KPIs
+    kpi_col4, kpi_col5, kpi_col6 = st.columns(3)
+    with kpi_col4:
+        st.metric(label="Attendance Rate", value=f"{attendance_rate:.1f}%")
+    with kpi_col5:
+        st.metric(label="Nursing Facility Attendees", value=f"{nursing_facility_attendees:,}")
+    with kpi_col6:
+        st.metric(label="Non-Nursing Facility Attendees", value=f"{non_nursing_facility_attendees:,}")
+
+    # Row 3: 5 KPIs
+    kpi_col7, kpi_col8, kpi_col9, kpi_col10, kpi_col11 = st.columns(5)
+    with kpi_col7:
+        st.metric(label="Total Organizations", value=f"{total_orgs:,}")
+    with kpi_col8:
+        st.metric(label="Nursing Facility Orgs", value=f"{nursing_facility_orgs:,}")
+    with kpi_col9:
+        st.metric(label="Non-Nursing Facility Orgs", value=f"{non_nursing_facility_orgs:,}")
+    with kpi_col10:
+        st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
+    with kpi_col11:
+        st.metric(label="Total Unique Session Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
     
     
     # --- NEW SECTION: MONTHLY WEBINAR COUNT ---
     st.markdown("---")
     st.header("Monthly Webinar Count")
     
-    fig_webinar_count, monthly_events_df = create_monthly_webinar_count_chart(df)
     if fig_webinar_count and monthly_events_df is not None:
         st.plotly_chart(fig_webinar_count, use_container_width=True)
 
@@ -893,3 +920,4 @@ if df is not None:
 
 else:
     st.warning("Data could not be loaded. Please check the file path and format.")
+
