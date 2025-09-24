@@ -301,6 +301,51 @@ def create_full_report_pdf(df, logo_path, nursing_facilities_workforce, report_d
 
     return bytes(pdf.output())
 
+# --- NEW: Function to create the monthly webinar count chart ---
+def create_monthly_webinar_count_chart(df):
+    """
+    Calculates the number of unique webinars per month and returns a Plotly figure and a DataFrame.
+    """
+    df_chart = df.copy()
+
+    # Check for necessary columns
+    required_cols = ['sheet name', 'year', 'month']
+    if not all(col in df_chart.columns for col in required_cols):
+        st.error("Required columns ('sheet name', 'year', 'month') not found for webinar count chart.")
+        return None, None
+
+    # Clean and prepare data
+    df_chart.dropna(subset=['sheet name'], inplace=True)
+    df_chart['sheet name'] = df_chart['sheet name'].astype(str).str.strip().str.lower()
+    df_chart = df_chart[df_chart['sheet name'] != '']
+
+    # Use existing date columns created in the main app logic
+    if 'yearmonth_sort' not in df_chart.columns or 'yearmonth_display' not in df_chart.columns:
+        st.error("Date columns ('yearmonth_sort', 'yearmonth_display') have not been created. Cannot generate chart.")
+        return None, None
+
+    # Group by month and count unique webinars ('sheet name')
+    monthly_events = df_chart.groupby(['yearmonth_sort', 'yearmonth_display'])['sheet name'].nunique().reset_index()
+    monthly_events.rename(columns={'sheet name': 'webinar_count'}, inplace=True)
+    monthly_events = monthly_events.sort_values('yearmonth_sort')
+
+    # Create Plotly Bar Chart
+    fig = px.bar(
+        monthly_events,
+        x='yearmonth_display',
+        y='webinar_count',
+        title='Number of Webinars Hosted per Month',
+        color_discrete_sequence=[LOGO_COLORS["accent_green"]]
+    )
+    fig.update_traces(texttemplate='%{y:,.0f}', textposition='outside')
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Number of Webinars",
+        margin=dict(t=80)
+    )
+    return fig, monthly_events
+
+
 # --- Main App Logic ---
 file_location = "MASTERDASH6.xlsx"
 kpi_file_location = "Alliant Total Org Data 2023-2025.xlsx"
@@ -312,8 +357,9 @@ if df is not None:
     # --- Sidebar and CSS ---
     st.sidebar.image(logo_path, use_container_width=True)
     st.sidebar.title("Navigation")
+    # ADDED 'Monthly Webinar Count' to the navigation
     headers = [
-        'Key Performance Indicators', 'Monthly Analysis', 'Detailed Monthly Workforce Breakdown',
+        'Key Performance Indicators', 'Monthly Webinar Count', 'Monthly Analysis', 'Detailed Monthly Workforce Breakdown',
         'Overall Performance by Region', 'Region-wise Nursing vs Non Nursing Attendance',
         'Attendee Heatmap by State', 'Region-wise Nursing Facility vs Non Nursing facility Participation',
         'Registrations vs. Attendance Comparison by Region'
@@ -325,14 +371,14 @@ if df is not None:
     st.markdown(f"""
     <style>
         .main {{ background-color: #f5f5ff; }}
-        h1, h2 {{ color: {LOGO_COLORS['primary_blue']}; scroll-margin-top: 80px; }}
+        h1, h2, h3 {{ color: {LOGO_COLORS['primary_blue']}; scroll-margin-top: 80px; }}
         a.nav-button {{ display: block; padding: 12px 15px; margin-bottom: 8px; background-color: #fff; color: #333; text-align: left; text-decoration: none !important; border-radius: 10px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,.05); transition: all .3s ease-in-out; font-weight: 500; }}
         a.nav-button:hover {{ background-color: {LOGO_COLORS['accent_green']}; color: #fff; box-shadow: 0 4px 8px rgba(0,0,0,.15); transform: translateY(-2px); }}
         a.nav-button.active {{ background-color: {LOGO_COLORS['primary_blue']} !important; color: #fff !important; box-shadow: 0 4px 12px rgba(0,114,206,.4); border-color: {LOGO_COLORS['primary_blue']}; font-weight: 600; }}
         a.nav-button.active:hover {{ background-color: #005a9e !important; transform: translateY(-1px); }}
         .stMetric {{ background-color: #fff; border: 1px solid #e0e0e0; border-left: 5px solid {LOGO_COLORS['primary_blue']}; border-radius: 10px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
         .stPlotlyChart {{ border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,.1); }}
-        h2[id] {{ position: relative; }}
+        h2[id], h3[id] {{ position: relative; }}
         .stMetric [data-testid="stMetricLabel"] {{ color: {LOGO_COLORS['primary_blue']}; }}
         .stMetric [data-testid="stMetricValue"] {{ color: #31333F; }}
     </style>
@@ -370,6 +416,18 @@ if df is not None:
 
     st.markdown("---")
 
+    # --- Pre-computation step for date columns and facility type ---
+    # This ensures these columns are available for all subsequent functions
+    try:
+        datetime_series = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str), format='mixed')
+        df['yearmonth_sort'] = datetime_series.dt.to_period('M').astype(str)
+        df['yearmonth_display'] = datetime_series.dt.strftime('%b - %y')
+        df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_list else 'Non-Nursing Facility')
+    except KeyError:
+        st.error("Error: Could not find 'year' and 'month' columns for dashboard charts. Please check the source file.")
+        st.stop()
+
+
     # --- KPIs and Dashboard Content ---
     st.header('Key Performance Indicators')
 
@@ -399,16 +457,26 @@ if df is not None:
         st.metric(label="Engagement (Hours)", value=f"{total_engagement_hours:,.2f}")
 
     st.metric(label="Total Unique Session Duration (Hours)", value=f"{total_webinar_duration:,.2f}")
+    
+    
+    # --- NEW SECTION: MONTHLY WEBINAR COUNT ---
+    st.markdown("---")
+    st.header("Monthly Webinar Count")
+    
+    fig_webinar_count, monthly_events_df = create_monthly_webinar_count_chart(df)
+    if fig_webinar_count and monthly_events_df is not None:
+        st.plotly_chart(fig_webinar_count, use_container_width=True)
+
+        st.markdown("##### Monthly Webinar Count Data")
+        count_table = monthly_events_df.drop('yearmonth_sort', axis=1).set_index('yearmonth_display').T
+        count_table.rename(index={'webinar_count': 'Webinar Count'}, inplace=True)
+        ordered_months_count = monthly_events_df.sort_values('yearmonth_sort')['yearmonth_display'].unique()
+        st.table(count_table[ordered_months_count])
+    else:
+        st.warning("Could not generate the monthly webinar count chart.")
+    
     st.markdown("---")
 
-    try:
-        datetime_series = pd.to_datetime(df['year'].astype(str) + '-' + df['month'].astype(str), format='mixed')
-        df['yearmonth_sort'] = datetime_series.dt.to_period('M').astype(str)
-        df['yearmonth_display'] = datetime_series.dt.strftime('%b - %y')
-        df['facility_type'] = df['workforce'].apply(lambda x: 'Nursing Facility' if x in nursing_list else 'Non-Nursing Facility')
-    except KeyError:
-        st.error("Error: Could not find 'year' and 'month' columns for dashboard charts.")
-        st.stop()
 
     # --- Monthly Analysis Section ---
     st.header("Monthly Analysis")
@@ -740,7 +808,7 @@ if df is not None:
     function initializeNavigation() {
         console.log('Initializing navigation...');
         function setupHeaderIds() {
-            const headers = parent.document.querySelectorAll('h2');
+            const headers = parent.document.querySelectorAll('h2, h3');
             headers.forEach(header => {
                 if (!header.id) {
                     const text = header.textContent || header.innerText;
@@ -750,7 +818,7 @@ if df is not None:
             });
         }
         function highlightActiveSection() {
-            const headers = Array.from(parent.document.querySelectorAll('h2[id]'));
+            const headers = Array.from(parent.document.querySelectorAll('h2[id], h3[id]'));
             const navButtons = Array.from(parent.document.querySelectorAll('.nav-button'));
             if (headers.length === 0 || navButtons.length === 0) return;
             let activeHeaderId = '';
